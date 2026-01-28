@@ -70,13 +70,13 @@ void del_form_t(void * a)
 void pari_verify(int * result, const long D);
 #endif
 
-int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index);
+int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index, const int ell);
 
 int h_upper_bound(const long D);
 
 int h_lower_bound(const long D);
 
-int compute_group_bjt(int * result, const long D, const int init_pow, const int h_star, htab_t * R, htab_t * Q);
+int compute_group_bjt(int * result, const long D, const int init_pow, const int h_star, const int ell, htab_t * R, htab_t * Q);
 
 void tabulate_bjt(const int index, const long D_total, const char * file, const char * folder, const int a, const int m,
 				const int * small_primes, int ** h_factors, int ** D_factors, int * h_list);

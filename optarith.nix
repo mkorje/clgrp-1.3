@@ -6,16 +6,16 @@
   pari,
   gmp,
   withPARI ? true,
-  primes ? 1000,
+  max_prime ? 104729,
 }:
 
 stdenv.mkDerivation {
   name = "optarith";
   src = fetchFromGitHub {
-    owner = "maxwellsayles";
+    owner = "mkorje";
     repo = "liboptarith";
-    rev = "e294773";
-    sha256 = "sha256-l8AkEu7CZqu91zRzU3KFOC3W9E0uv6lLOXYdZTke4Oo=";
+    rev = "c6bb2e4";
+    sha256 = "sha256-CAPwvvBX1kStxWGaNmh5pwkq1tlJ8Y1ANCGwnPT523Y=";
   };
 
   nativeBuildInputs = [ scons ];
@@ -47,7 +47,7 @@ stdenv.mkDerivation {
 
   preBuild = ''
     $CXX -I. code_gen/gen_sqrtmodp.cc primes.c -o code_gen/gen_sqrtmodp -lgmp
-    ./code_gen/gen_sqrtmodp ${toString primes}
+    ./code_gen/gen_sqrtmodp ${toString max_prime}
   '';
 
   doCheck = true;

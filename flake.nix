@@ -14,7 +14,7 @@
     in
     {
       packages.${system} = rec {
-        optarith = pkgs.callPackage ./optarith.nix { primes = 10000; };
+        optarith = pkgs.callPackage ./optarith.nix { };
         qform = pkgs.callPackage ./qform.nix { inherit optarith; };
       };
 
@@ -32,11 +32,16 @@
           pari
           self.packages.${system}.optarith
           self.packages.${system}.qform
+          gdb
+          valgrind
+          hwloc
+          python3
         ];
 
         shellHook = ''
           cat << EOF
           make distclean
+          automake --add-missing
           autoreconf
           ./configure CC=mpicc CPPFLAGS="-DDEBUG -DKEEP_FILES -DWITH_PARI" LIBS="-lpari -lm"
           ./configure CC=mpicc CPPFLAGS="-DKEEP_FILES -DWITH_PARI" LIBS="-lpari -lm"

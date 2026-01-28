@@ -116,15 +116,18 @@ void qform_pow_s32(group_pow_t * pow, qform_t * R, const qform_t * A, int32_t ex
 
 	
 // init_pow = class_number / order of the p-group
-int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index)
+int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index, const int ell)
 {
 	s64_qform_group_t * group = (s64_qform_group_t *) gp->group;
+	int p;
 
 	s64_qform_set_id(group, &R->form);
 
 	while (s64_qform_is_id(group, &R->form))
 	{
-		while (s64_qform_is_primeform(group, &R->form, prime_list[++prime_index]) == 0);
+		do {
+			p = prime_list[++prime_index];
+		} while (p == ell || s64_qform_is_primeform(group, &R->form, p) == 0);
 
 		qform_pow_s32(gp, &R->form, &R->form, init_pow);
 	}
@@ -208,7 +211,7 @@ int h_lower_bound(const long D)
 
 
 // Ramachandran's thesis, p. 47
-int compute_group_bjt(int * result, const long D, const int init_pow, const int h_star, htab_t * R, htab_t * Q)
+int compute_group_bjt(int * result, const long D, const int init_pow, const int h_star, const int ell, htab_t * R, htab_t * Q)
 {
 #ifdef DEBUG
 printf("h_star=%d\n", h_star);
@@ -262,7 +265,7 @@ for (int p = 0; p <= j; p++)
 		cur_index = R_prev_size;
 
 		// initializations
-		prime_index = next(&gp, &ne, init_pow, prime_index);
+		prime_index = next(&gp, &ne, init_pow, prime_index, ell);
 		s64_qform_set(&group, &g, &ne.form);
 
 #ifdef DEBUG
@@ -872,7 +875,7 @@ void tabulate_bjt(const int index, const long D_total,
 			//printf("%ld: D=%ld, #factors=%u, h=%d, init_pow=%d\n", D_cur, D, D_cur_factors[0], h, init_pow);
 			//fflush(stdout);
 
-			rank = compute_group_bjt(result, -D, init_pow, h, &R, &Q);
+			rank = compute_group_bjt(result, -D, init_pow, h, 0, &R, &Q);
 
 			h = result[0] * init_pow;
 			result[1] *= init_pow;

@@ -151,13 +151,13 @@ void process_clgrp_file(const int index, const long D_total,
 				h_fac_total = h_cur_factors[0];
 				h_temp = h;
 
-        // fprintf(stderr, "DEBUG: h=%d, D=%ld, D_sub=%ld, kron=%d, h_fac_total=%d\n", h, D, D_sub, kron, h_fac_total);
-        // fflush(stderr);
+        fprintf(stderr, "DEBUG: h=%d, D=%ld, D_sub=%ld, kron=%d, h_fac_total=%d\n", h, D, D_sub, kron, h_fac_total);
+        fflush(stderr);
 				for (int i = 1; i <= h_fac_total; i++)
 				{
 					h_fac = h_cur_factors[i];
-            // fprintf(stderr, "\th_fac=%d\n", h_fac);
-            // fflush(stderr);
+            fprintf(stderr, "\th_fac=%d\n", h_fac);
+            fflush(stderr);
 					h_temp /= h_fac;
 					if (h_temp % h_fac != 0)
 					{
@@ -165,11 +165,11 @@ void process_clgrp_file(const int index, const long D_total,
 					}
 				}
 
-				// h /= init_pow;
-        // fprintf(stderr, "DEBUG: init_pow=%d, h=%d\n", init_pow, h);
-        // fflush(stderr);
-        output_rank = compute_group_bjt(result, -D_sub, init_pow, h, &R, &Q);
-        // h = result[0] * init_pow;
+				h /= init_pow;
+        fprintf(stderr, "DEBUG: init_pow=%d, h=%d\n", init_pow, h);
+        fflush(stderr);
+        output_rank = compute_group_bjt(result, -D_sub, init_pow, h, ell, &R, &Q);
+        h = result[0] * init_pow;
         result[1] *= init_pow;
         
 
