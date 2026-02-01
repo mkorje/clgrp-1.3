@@ -145,19 +145,26 @@ void process_clgrp_file(const int index, const long D_total,
             h *= (ell - 1) * ell;
             D_sub *= ell * ell * ell * ell;
         }
+
+        if (D == 4) {
+            h /= 2;
+        } else if (D == 3) {
+            h /= 3;
+        }
+        
         /* Compute class structure of order of index ell^2 */
 				init_pow = 1;
 				h_cur_factors = h_factors[h];
 				h_fac_total = h_cur_factors[0];
 				h_temp = h;
 
-        fprintf(stderr, "DEBUG: h=%d, D=%ld, D_sub=%ld, kron=%d, h_fac_total=%d\n", h, D, D_sub, kron, h_fac_total);
-        fflush(stderr);
+        // fprintf(stderr, "DEBUG: h=%d, D=%ld, D_sub=%ld, kron=%d, h_fac_total=%d\n", h, D, D_sub, kron, h_fac_total);
+        // fflush(stderr);
 				for (int i = 1; i <= h_fac_total; i++)
 				{
 					h_fac = h_cur_factors[i];
-            fprintf(stderr, "\th_fac=%d\n", h_fac);
-            fflush(stderr);
+            // fprintf(stderr, "\th_fac=%d\n", h_fac);
+            // fflush(stderr);
 					h_temp /= h_fac;
 					if (h_temp % h_fac != 0)
 					{
@@ -166,9 +173,12 @@ void process_clgrp_file(const int index, const long D_total,
 				}
 
 				h /= init_pow;
-        fprintf(stderr, "DEBUG: init_pow=%d, h=%d\n", init_pow, h);
-        fflush(stderr);
+        // fprintf(stderr, "DEBUG: init_pow=%d, h=%d\n", init_pow, h);
+        // fflush(stderr);
         output_rank = compute_group_bjt(result, -D_sub, init_pow, h, ell, &R, &Q);
+        // fprintf(stderr, "output_rank: %d\n", output_rank);
+        // fflush(stderr);
+
         h = result[0] * init_pow;
         result[1] *= init_pow;
         
@@ -187,6 +197,10 @@ void process_clgrp_file(const int index, const long D_total,
             // fflush(stderr);
         sprintf(data, "%d\n", result[output_rank]);
         strcat(output_line, data);
+
+    			// #ifdef WITH_PARI
+    			// pari_verify(result + 1, -D_sub);
+    			// #endif
 
         fputs(output_line, outfd);
     }

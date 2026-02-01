@@ -119,19 +119,15 @@ void qform_pow_s32(group_pow_t * pow, qform_t * R, const qform_t * A, int32_t ex
 int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index, const int ell)
 {
 	s64_qform_group_t * group = (s64_qform_group_t *) gp->group;
-	int p;
 
-	s64_qform_set_id(group, &R->form);
+		s64_qform_set_id(group, &R->form);
 
-	while (s64_qform_is_id(group, &R->form))
-	{
-		do {
-			p = prime_list[++prime_index];
-		} while (p == ell || s64_qform_is_primeform(group, &R->form, p) == 0);
+		while (s64_qform_is_id(group, &R->form))
+		{
+			 while (s64_qform_is_primeform(group, &R->form, prime_list[++prime_index]) == 0);
 
-		qform_pow_s32(gp, &R->form, &R->form, init_pow);
-	}
-
+			qform_pow_s32(gp, &R->form, &R->form, init_pow);
+		}
 	return prime_index;
 }
 
@@ -222,6 +218,7 @@ printf("h_star=%d\n", h_star);
 	s64_qform_group_t group;
 	s64_qform_group_init(&group);
 	s64_qform_group_set_discriminant_s64(&group, D);
+	group.conductor_ell = ell;
 
 	group_pow_t gp;
 	group_pow_init(&gp, &group.desc.group);
@@ -244,6 +241,10 @@ printf("h_star=%d\n", h_star);
 
 	char is_break;
 
+
+  // fprintf(stderr, "starting loop h=%d < h_star=%d\n", h, h_star);
+  // fflush(stderr);
+
 	while (h < h_star)
 	{
 #ifdef DEBUG
@@ -260,6 +261,20 @@ for (int p = 0; p <= j; p++)
 }
 #endif
 
+	 //  fprintf(stderr, "iteration: h=%d, j=%d\n", h, j);
+		// fprintf(stderr, "\tINITIAL b:\n");
+		// for (int p = 0; p <= j; p++)
+		// {
+		// 	fprintf(stderr, "\tb_vec[%d]=", p);
+		// 	for (int l = 0; l <= p; l++)
+		// 	{
+		// 		fprintf(stderr, "\t %d", M[p][l]);
+		// 	}
+		// 	fprintf(stderr, "\t\n");
+		// }
+	 //  fprintf(stderr, "start\n");
+	 //  fflush(stderr);
+
 		Q_size = htab_size(Q);
 		R_prev_size = htab_size(R);
 		cur_index = R_prev_size;
@@ -273,6 +288,9 @@ printf("g[%d]=", j);
 s64_qform_print(&group, &g);
 printf(", <- prime_index=%d\n", prime_index);
 #endif
+
+	  // fprintf(stderr, "\tg[%d]=Qfb(%"PRId32", %"PRId32", %"PRId64"), <- prime_index=%d\n", j, g.a, g.b, g.c, prime_index);
+	  // fflush(stderr);
 
 		s = 1;
 		y = omega;
@@ -291,6 +309,8 @@ printf(", <- prime_index=%d\n", prime_index);
 #ifdef DEBUG
 printf("\n\nContained in current subgroup?\n");
 #endif
+		  // fprintf(stderr, "\tContained in current subgroup?\n");
+		  // fflush(stderr);
 
 			for (i = 0; i < Q_size; i++)
 			{
@@ -319,6 +339,8 @@ printf("Yes! ");
 s64_qform_print(&group, &e->form);
 printf("\n");
 #endif
+					  // fprintf(stderr, "\tYes! Qfb(%"PRId32", %"PRId32", %"PRId64")\n", e->form.a, e->form.b, e->form.c);
+					  // fflush(stderr);
 
 						M[j][j] = 1;
 						break;
@@ -332,6 +354,8 @@ printf("\n");
 #ifdef DEBUG
 printf("\nBaby steps, s=%d, u=%d\n", s, u);
 #endif
+		  // fprintf(stderr, "\tBaby steps, s=%d, u=%d\n", s, u);
+		  // fflush(stderr);
 			// compute new baby steps
 			for (i = s; i <= u; i++)
 			{
@@ -460,6 +484,9 @@ printf(" to R\n");
 #ifdef DEBUG
 printf("\nGiant steps\n");
 #endif
+		  // fprintf(stderr, "\tGiant steps\n");
+		  // fflush(stderr);
+
 			while (M[j][j] == 0 && y < u * u)
 			{
 #ifdef DEBUG
@@ -467,6 +494,8 @@ printf("y=%d, u=%d, b = ", y, u);
 s64_qform_print(&group, &b);
 printf("\n");
 #endif
+			  // fprintf(stderr, "\ty=%d, u=%d, b = Qfb(%"PRId32", %"PRId32", %"PRId64")\n", y, u, b.a, b.b, b.c);
+			  // fflush(stderr);
 
 				for (t = 0; t < Q_size; t++)
 				{
@@ -483,6 +512,8 @@ printf(" * ");
 s64_qform_print(&group, &b);
 printf("\n");
 #endif					
+				  // fprintf(stderr, "\tLooking for Qfb(%"PRId32", %"PRId32", %"PRId64") = Qfb(%"PRId32", %"PRId32", %"PRId64") * Qfb(%"PRId32", %"PRId32", %"PRId64")\n", temp.a, temp.b, temp.c, it->form.a, it->form.b, it->form.c, b.a, b.b, b.c);
+				  // fflush(stderr);
 
 					e = htab_find(R, &temp);
 
@@ -537,6 +568,8 @@ printf("\n");
 #ifdef DEBUG
 printf("Doubling step width...\n");
 #endif
+		  // fprintf(stderr, "\tDoubling step width...\n");
+		  // fflush(stderr);
 			s = u + 1;
 			u *= 2;
 			s64_qform_square(&group, &c, &c);
@@ -558,6 +591,18 @@ for (int p = 0; p <= j; p++)
 }
 #endif
 
+			// fprintf(stderr, "\tRESULT:\n");
+			// for (int p = 0; p <= j; p++)
+			// {
+			// 	fprintf(stderr, "\t\tb_vec[%d]=", p);
+			// 	for (int l = 0; l <= p; l++)
+			// 	{
+			// 		fprintf(stderr, "\t\t %d", M[p][l]);
+			// 	}
+			// 	fprintf(stderr, "\t\t\n");
+			// }
+		 //  fflush(stderr);
+
 			h *= M[j][j];
 
 			if (h < h_star)
@@ -570,6 +615,9 @@ for (int p = 0; p <= j; p++)
 #ifdef DEBUG
 printf("\n\nUpdating R and Q\nq=%d, det=%d, R_size=%lu\n", q, det, R_size);
 #endif
+				// fprintf(stderr, "\tUpdating R and Q: q=%d, det=%d, R_size=%lu\n", q, det, R_size);
+			 //  fflush(stderr);
+
 
 				for (t = R_size - 1; t >= det; t--)
 				{
@@ -581,12 +629,35 @@ printf(" <-> ");
 vec_print(&foo->value);
 printf("\n");
 #endif
+					// form_t * foo = (form_t *) htab_get(R, t);
+				 //  fprintf(stderr, "Removing Qfb(%"PRId32", %"PRId32", %"PRId64") <-> ", foo->form.a, foo->form.b, foo->form.c);
+					// fprintf(stderr, "%d", foo->value.v[0]);
+					// for (size_t i = 1; i < foo->value.size; i++)
+					// {
+					// 	fprintf(stderr, " %d", foo->value.v[i]);
+					// }
+					// fprintf(stderr, "\n");
+				 //  fflush(stderr);
+
 					htab_delete_from(R, t);
 				}
 
+			  // fprintf(stderr, "\tRemoves done.\n");
+			  // fflush(stderr);
+
 				Q_size = htab_size(Q);
+			  // fprintf(stderr, "\tQ_size done.\n");
+			  // fflush(stderr);
+			  // fprintf(stderr, "\tq=%d\n",q);
+			  // fflush(stderr);
+			  // fprintf(stderr, "\tg=Qfb(%"PRId32", %"PRId32", %"PRId64")\n",g.a, g.b, g.c);
+			  // fflush(stderr);
 				qform_pow_u32(&gp, &c, &g, q);
+			  // fprintf(stderr, "\tPow done.\n");
+			  // fflush(stderr);
 				s64_qform_set_id(&group, &b);
+			  // fprintf(stderr, "\tSet id done.\n");
+			  // fflush(stderr);
 
 				for (i = 1; (i < q) && (i * q < M[j][j]); i++)
 				{
@@ -596,6 +667,9 @@ printf("g^%d = ", i * q);
 s64_qform_print(&group, &b);
 printf("\n");
 #endif
+				  // fprintf(stderr, "\tg^%d = Qfb(%"PRId32", %"PRId32", %"PRId64")\n", i * q, b.a, b.b, b.c);
+				  // fflush(stderr);
+
 					for (t = 0; t < Q_size; t++)
 					{
 						it = (form_t *) htab_get(Q, t);
@@ -635,6 +709,9 @@ printf(" to Q\n");
 		fflush(stdout);
 		exit(1);
 	}
+
+  // fprintf(stderr, "matrix complete, h=%d\n", h);
+  // fflush(stderr);
 
 	if (h != 1)
 	{

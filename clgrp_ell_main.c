@@ -95,21 +95,18 @@ int main(int argc, char *argv[])
     }
     else
     {
+        long D_root = sqrt(D_max * ell * ell * ell * ell);
+
+        primes = (int *) malloc(((int) (1.25506 * D_root / log(D_root))) * sizeof(int));
+        prime_sieve(D_root, primes);
+        primes = (int *) realloc(primes, (2 + primes[0]) * sizeof(int));
+
         int h_max = 0;
+        long temp = 1;
+
         // Ramare's bound
         h_max = (1/M_PI) * sqrt(D_max) * (0.5 * log(D_max) + 2.5 - log(6)) + 1;
         h_max *= ell * (ell + 1);
-        // fprintf(stderr, "DEBUG: h_max=%d\n", h_max);
-        // fflush(stderr);
-
-        long D_root = sqrt(D_max * ell * ell * ell * ell);
-        long prime_bound = (D_root > h_max) ? D_root : h_max;
-
-        primes = (int *) malloc(((int) (1.25506 * prime_bound / log(prime_bound))) * sizeof(int));
-        prime_sieve(prime_bound, primes);
-        primes = (int *) realloc(primes, (2 + primes[0]) * sizeof(int));
-
-        long temp = 1;
 
         // compute maximal number of prime factors of a class number
         for (i = 1; temp < h_max; i++)
