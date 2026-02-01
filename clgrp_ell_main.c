@@ -72,10 +72,21 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
+        int active_workers = 0;
+
         /* Send initial work to all workers */
         for (i = 0; i < num_procs; i++)
         {
-            MPI_Send(&i, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+            if (i < files)
+            {
+                MPI_Send(&i, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+                active_workers++;
+            }
+            else
+            {
+                int term = -1;
+                MPI_Send(&term, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+            }
         }
 
         /* Distribute remaining work as workers complete */
@@ -85,10 +96,13 @@ int main(int argc, char *argv[])
             MPI_Send(&i, 1, MPI_INT, idx, 0, MPI_COMM_WORLD);
         }
 
-        /* Send termination signal to all workers */
-        for (i = 0, idx = -1; i < num_procs; i++)
+        /* Wait for all active workers to finish and terminate them */
+        while (active_workers > 0)
         {
-            MPI_Send(&idx, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+            MPI_Recv(&idx, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            int term = -1;
+            MPI_Send(&term, 1, MPI_INT, idx, 0, MPI_COMM_WORLD);
+            active_workers--;
         }
 
         printf("All files processed.\n");

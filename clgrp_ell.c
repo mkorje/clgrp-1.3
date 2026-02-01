@@ -203,6 +203,7 @@ void process_clgrp_file(const int index, const long D_total,
     			// #endif
 
         fputs(output_line, outfd);
+        fflush(outfd);
     }
 
     pclose(infd);

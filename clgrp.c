@@ -234,7 +234,7 @@ printf("h_star=%d\n", h_star);
 	vec_push_back(&ne.value, 0);
 	htab_insert(Q, &ne);
 
-	int omega = 2, h = 1, det = 1, s, y, u, i, j = 0, k, prime_index = -1, rank = 0, q, n, t;
+	int omega = 2, h = 1, det = 1, s, y, u = 0, i, j = 0, k, prime_index = -1, rank = 0, q, n, t;
 	size_t R_size, R_prev_size, Q_size, cur_index;
 
 	s64_qform_t g, g_inv, a, b, c, temp;
@@ -359,7 +359,8 @@ printf("\nBaby steps, s=%d, u=%d\n", s, u);
 			// compute new baby steps
 			for (i = s; i <= u; i++)
 			{
-				s64_qform_compose(&group, &a, &a, &g_inv);
+				// Robust calculation using binary exponentiation to avoid drift
+				qform_pow_s32(&gp, &a, &g, -i);
 
 				if (a.a == 1)
 				{
