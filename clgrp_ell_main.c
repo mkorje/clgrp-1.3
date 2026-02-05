@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <math.h>
 
+#ifdef WITH_PARI
+#include <pari/pari.h>
+#endif
+
 #include "clgrp_ell.h"
 #include "sieve.h"
 
@@ -109,6 +113,10 @@ int main(int argc, char *argv[])
     }
     else
     {
+        		#ifdef WITH_PARI
+		pari_init(1000000, 0);
+		#endif
+
         long D_root = sqrt(D_max * ell * ell * ell * ell);
 
         primes = (int *) malloc(((int) (1.25506 * D_root / log(D_root))) * sizeof(int));

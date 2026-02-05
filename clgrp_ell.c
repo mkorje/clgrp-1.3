@@ -67,7 +67,7 @@ void process_clgrp_file(const int index, const long D_total,
     // compute an upper bound on the size of the table
     int h_max = h_upper_bound(-D_max * ell * ell * ell * ell);
     int table_size = next_prime((((int) sqrt(h_max)) << 1) - 1);
-
+    // fprintf(stderr, "D_max: %ld, h_max: %ld, max prime: %ld\n", D_max, h_max, (((long) sqrt(h_max)) << 1) - 1);
     if (table_size == -1)
     {
         perror("Not enough primes in liboptarith/primes.h\n");
@@ -198,12 +198,12 @@ void process_clgrp_file(const int index, const long D_total,
         sprintf(data, "%d\n", result[output_rank]);
         strcat(output_line, data);
 
-    			// #ifdef WITH_PARI
-    			// pari_verify(result + 1, -D_sub);
-    			// #endif
+    			#ifdef WITH_PARI
+    			pari_verify(result + 1, -D_sub);
+    			#endif
 
         fputs(output_line, outfd);
-        fflush(outfd);
+        // fflush(outfd);
     }
 
     pclose(infd);

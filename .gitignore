@@ -3,6 +3,8 @@ verify
 clgrp
 clgrp_ell
 
+rust/target
+
 # Data
 data*
 lmfdb

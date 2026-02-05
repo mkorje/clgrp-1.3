@@ -36,6 +36,10 @@
           valgrind
           hwloc
           python3
+          rustc
+          cargo
+          clippy
+          rustfmt
         ];
 
         shellHook = ''
