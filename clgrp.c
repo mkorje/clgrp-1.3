@@ -132,7 +132,7 @@ int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index, cons
 }
 
 // uses Olivier Ramare's upper bounds on L(1,x)
-int h_upper_bound(const long D)
+long h_upper_bound(const long D)
 {
 	double E;
 	if ((D & 3) == 0)
@@ -218,7 +218,7 @@ printf("h_star=%d\n", h_star);
 	s64_qform_group_t group;
 	s64_qform_group_init(&group);
 	s64_qform_group_set_discriminant_s64(&group, D);
-	group.conductor_ell = ell;
+	// group.conductor_ell = ell;
 
 	group_pow_t gp;
 	group_pow_init(&gp, &group.desc.group);

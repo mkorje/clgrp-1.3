@@ -6,18 +6,18 @@
   pari,
   gmp,
   optarith,
-  withPARI ? true,
-  doCheck ? false,
+  withPARI ? false,
+  doCheck ? true,
 }:
 
 stdenv.mkDerivation {
   pname = "qform";
-  version = "1.0.4";
+  version = "1.1.0";
   src = fetchFromGitHub {
     owner = "mkorje";
     repo = "libqform";
-    rev = "e51c843";
-    sha256 = "sha256-vsIecgYCYbf4+YOfxq6pKDjeqQBznNc1fOwzP2C2Q6A=";
+    rev = "80aa5e2";
+    sha256 = "sha256-tQJDpejDDAwuwJ1VwpMdidTg+dxHZvNbbQUkSGSwXY4=";
   };
 
   nativeBuildInputs = [ scons ];

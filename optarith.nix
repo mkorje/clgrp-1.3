@@ -5,12 +5,13 @@
   scons,
   pari,
   gmp,
-  withPARI ? true,
-  max_prime ? 104729,
+  withPARI ? false,
+  max_prime ? 104729, # the 10,000th prime
 }:
 
 stdenv.mkDerivation {
   name = "optarith";
+  version = "1.1.0";
   src = fetchFromGitHub {
     owner = "mkorje";
     repo = "liboptarith";

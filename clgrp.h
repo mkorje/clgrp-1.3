@@ -72,7 +72,7 @@ void pari_verify(int * result, const long D);
 
 int next(group_pow_t * gp, form_t * R, const int init_pow, int prime_index, const int ell);
 
-int h_upper_bound(const long D);
+long h_upper_bound(const long D);
 
 int h_lower_bound(const long D);
 
