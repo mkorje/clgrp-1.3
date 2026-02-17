@@ -1,12 +1,55 @@
 {
   "nodes": {
+    "liboptarith": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1771305676,
+        "narHash": "sha256-1PhlAadKaAJme02i3BzwaivVX/YZgPBvhJk6UKfTuFw=",
+        "owner": "mkorje",
+        "repo": "liboptarith",
+        "rev": "bd3ae05e5c86bffd07b904356fae3386510354f2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mkorje",
+        "repo": "liboptarith",
+        "type": "github"
+      }
+    },
+    "libqform": {
+      "inputs": {
+        "liboptarith": [
+          "liboptarith"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1771312698,
+        "narHash": "sha256-hmfMh0fkdxK06cyc55Wto9ea+ls7ATivcX3qgZoJO9Q=",
+        "owner": "mkorje",
+        "repo": "libqform",
+        "rev": "e0405851422a07bf43caf6e96c861be7366042bc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mkorje",
+        "repo": "libqform",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1769170682,
-        "narHash": "sha256-oMmN1lVQU0F0W2k6OI3bgdzp2YOHWYUAw79qzDSjenU=",
+        "lastModified": 1771008912,
+        "narHash": "sha256-gf2AmWVTs8lEq7z/3ZAsgnZDhWIckkb+ZnAo5RzSxJg=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+        "rev": "a82ccc39b39b621151d6732718e3e250109076fa",
         "type": "github"
       },
       "original": {
@@ -18,6 +61,8 @@
     },
     "root": {
       "inputs": {
+        "liboptarith": "liboptarith",
+        "libqform": "libqform",
         "nixpkgs": "nixpkgs"
       }
     }

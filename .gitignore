@@ -1,13 +1,16 @@
 # Executables
 verify
-clgrp
+/clgrp
 clgrp_ell
+clgrp_ell_new
 
 rust/target
+/target
 
 # Data
 data*
 lmfdb
+files
 
 # Misc
 config.h

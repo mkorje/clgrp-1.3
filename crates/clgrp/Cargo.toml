@@ -1,0 +1,20 @@
+[package]
+name = "clgrp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Placeholder Rust crate for clgrp"
+
+[lib]
+name = "clgrp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "clgrp"
+path = "src/main.rs"
+
+[dependencies]
+flate2 = { workspace = true }
+reqwest = { workspace = true }
+qform = { workspace = true }
+optarith = { workspace = true }
