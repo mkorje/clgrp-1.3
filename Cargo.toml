@@ -15,3 +15,4 @@ reqwest = { version = "0.13", default-features = false, features = [
 ] }
 optarith = { git = "https://github.com/mkorje/liboptarith", package = "optarith", default-features = false }
 qform = { git = "https://github.com/mkorje/libqform", package = "qform", default-features = false }
+malachite.version = "0.9"

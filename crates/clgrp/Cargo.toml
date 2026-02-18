@@ -13,8 +13,13 @@ path = "src/lib.rs"
 name = "clgrp"
 path = "src/main.rs"
 
+[[bin]]
+name = "counter-example"
+path = "src/bin/counter-example.rs"
+
 [dependencies]
 flate2 = { workspace = true }
 reqwest = { workspace = true }
 qform = { workspace = true }
 optarith = { workspace = true }
+malachite = { workspace = true }
