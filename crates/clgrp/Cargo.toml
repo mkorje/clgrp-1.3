@@ -25,6 +25,10 @@ path = "src/bin/split-order.rs"
 name = "split-order-clgrp"
 path = "src/bin/split-order-clgrp.rs"
 
+[[bin]]
+name = "split2-order4"
+path = "src/bin/split2-order4.rs"
+
 [dependencies]
 flate2 = { workspace = true }
 reqwest = { workspace = true }
