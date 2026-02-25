@@ -17,6 +17,10 @@ path = "src/main.rs"
 name = "counter-example"
 path = "src/bin/counter-example.rs"
 
+[[bin]]
+name = "split-order"
+path = "src/bin/split-order.rs"
+
 [dependencies]
 flate2 = { workspace = true }
 reqwest = { workspace = true }
