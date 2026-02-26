@@ -22,6 +22,10 @@ name = "split-order"
 path = "src/bin/split-order.rs"
 
 [[bin]]
+name = "split-order-x"
+path = "src/bin/split-order-x.rs"
+
+[[bin]]
 name = "split-order-clgrp"
 path = "src/bin/split-order-clgrp.rs"
 

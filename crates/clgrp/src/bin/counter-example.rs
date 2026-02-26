@@ -47,7 +47,7 @@ fn main() {
     let spec = LmfdbFileSpec { k, r, m };
     let mut stream = stream_lmfdb_class_groups(spec).unwrap();
 
-    let ell: i32 = 5;
+    let ell: i32 = 2;
 
     let mut count = 0;
     while let Some(Ok(LmfdbClassGroupEntry {
@@ -68,8 +68,8 @@ fn main() {
         let mut h: i32 = class_number.try_into().unwrap();
         let mut d = discriminant;
 
-        h *= (ell + 1) * ell;
-        d *= (ell * ell * ell * ell) as i64;
+        h *= (ell) * ell * (ell + 1);
+        d *= (ell * ell * ell * ell * ell * ell) as i64;
 
         let init = remove_ell_fast_i32(h, ell);
         let h_star = h / init;
@@ -77,20 +77,15 @@ fn main() {
             continue;
         }
 
-        writeln!(
-            &mut buffer,
+        println!(
             "kronecker={:?},h={:?},d={:?},init={:?},h*={:?}",
             kronecker, h, d, init, h_star
         );
 
         let invariants = compute_group_bjt(d, init, h_star, ell).unwrap();
         let exponent = *invariants.invariants.iter().max().unwrap_or(&0);
-        let mut depth = 2;
-        writeln!(
-            &mut buffer,
-            "d={:?}, {:?} {:?}",
-            depth, exponent, invariants.invariants
-        );
+        let mut depth = 3;
+        println!("d={:?}, {:?} {:?}", depth, exponent, invariants.invariants);
 
         loop {
             h *= ell;
@@ -100,8 +95,7 @@ fn main() {
             let init = remove_ell_fast_i32(h, ell);
             let invariants = compute_group_bjt(d, init, h / init, 0).unwrap();
             let new_exponent: i64 = *invariants.invariants.iter().max().unwrap_or(&0);
-            writeln!(
-                &mut buffer,
+            println!(
                 " ={:?}, {:?}: {:?}",
                 depth, new_exponent, invariants.invariants
             );

@@ -2,7 +2,7 @@ use clgrp::bjt::compute_group_bjt;
 use malachite::base::num::arithmetic::traits::KroneckerSymbol;
 use malachite::integer::Integer;
 use qform::{S64Form, S64Group};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Instant;
 
@@ -152,46 +152,19 @@ fn h_lower_bound(d: i64, primes: &[u64]) -> i32 {
     }
 }
 
-/// Compute the order of `f` in the class group of known order `h`.
-fn element_order(group: &S64Group, f: &S64Form, h: u64) -> u64 {
-    let mut ord = h;
-    for p in prime_divisors(ord) {
-        while ord % p == 0 {
-            let exp = ord / p;
-            if exp > u32::MAX as u64 {
-                break;
-            }
-            if group.is_id(&group.pow_u32(f, exp as u32)) {
-                ord /= p;
-            } else {
-                break;
-            }
+/// Compute the order of `f` by repeated composition, up to `max_order`.
+/// Returns 0 if the order exceeds `max_order`.
+fn element_order_bounded(group: &S64Group, f: &S64Form, max_order: u64) -> u64 {
+    let mut current = *f;
+    for n in 1..=max_order {
+        if group.is_id(&current) {
+            return n;
+        }
+        if n < max_order {
+            current = group.compose(&current, f);
         }
     }
-    ord
-}
-
-struct DiscResult {
-    d: i64,
-    order: u64,
-    has_order_4: bool,
-}
-
-fn process_disc(d: i64, primes: &[u64]) -> Option<DiscResult> {
-    let group = S64Group::new(d)?;
-    let f = group.prime_form(2)?;
-
-    let h_star = h_lower_bound(d, primes);
-    let result = compute_group_bjt(d, 1, h_star, 0).ok()?;
-
-    let has_order_4 = result.invariants.iter().any(|&inv| inv % 4 == 0);
-    let order = element_order(&group, &f, result.h as u64);
-
-    Some(DiscResult {
-        d,
-        order,
-        has_order_4,
-    })
+    0
 }
 
 fn main() {
@@ -224,13 +197,24 @@ fn main() {
     let sieve_limit = 2 * Q_TABLE[Q_TABLE.len() - 1] as usize + 100;
     let primes = sieve_primes(sieve_limit);
 
-    // For ell=2, only D ≡ 1 (mod 8) have (D/2) = 1, i.e. |D| ≡ 7 (mod 8).
-    let discs: Vec<i64> = (7..=max_bound)
-        .step_by(8)
-        .map(|abs_d| -(abs_d as i64))
+    // Precompute per-n bounds: bound[n] = 4 * 2^n - 1.
+    let bounds: Vec<u64> = (0..=n_max)
+        .map(|n| {
+            4u64.saturating_mul(1u64.checked_shl(n as u32).unwrap_or(u64::MAX))
+                .saturating_sub(1)
+        })
         .collect();
 
-    let total = discs.len();
+    // Per-n tracking via atomics (no need to collect results).
+    let found_order_4: Vec<AtomicBool> =
+        (0..=n_max as usize).map(|_| AtomicBool::new(false)).collect();
+    let counts: Vec<AtomicUsize> =
+        (0..=n_max as usize).map(|_| AtomicUsize::new(0)).collect();
+    let num_resolved = AtomicUsize::new(0);
+
+    // For ell=2, only D ≡ 1 (mod 8) have (D/2) = 1, i.e. |D| ≡ 7 (mod 8).
+    // Total number of discriminants: |D| in {7, 15, 23, ...} up to max_bound.
+    let total = ((max_bound - 7) / 8 + 1) as usize;
     eprintln!(
         "Processing {} discriminants (n_max={}, |D| up to {})",
         total, n_max, max_bound
@@ -238,47 +222,143 @@ fn main() {
     let started = Instant::now();
     let processed = AtomicUsize::new(0);
     let errors = AtomicUsize::new(0);
+    let skipped = AtomicUsize::new(0);
 
     let workers = thread::available_parallelism().map_or(1, |n| n.get());
-    let chunk_size = discs.len().div_ceil(workers.max(1));
+    let chunk_size = (total as u64).div_ceil(workers.max(1) as u64);
 
-    let results: Vec<DiscResult> = thread::scope(|scope| {
-        let handles: Vec<_> = discs
-            .chunks(chunk_size)
-            .map(|chunk| {
+    thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers as u64)
+            .map(|w| {
+                // Each worker handles a contiguous range of discriminant indices.
+                let start_idx = w * chunk_size;
+                let end_idx = ((w + 1) * chunk_size).min(total as u64);
                 let primes = &primes;
                 let processed = &processed;
                 let errors = &errors;
+                let skipped = &skipped;
+                let found_order_4 = &found_order_4;
+                let counts = &counts;
+                let num_resolved = &num_resolved;
+                let bounds = &bounds;
                 scope.spawn(move || {
-                    let mut local = Vec::new();
-                    for &d in chunk {
-                        match process_disc(d, primes) {
-                            Some(r) => local.push(r),
+                    for i in start_idx..end_idx {
+                        // Early termination: all n values resolved.
+                        if num_resolved.load(Ordering::Relaxed) >= n_max as usize {
+                            break;
+                        }
+
+                        let abs_d = 7 + i * 8;
+                        let d = -(abs_d as i64);
+
+                        let group = match S64Group::new(d) {
+                            Some(g) => g,
                             None => {
                                 errors.fetch_add(1, Ordering::Relaxed);
+                                processed.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+                        let f = match group.prime_form(2) {
+                            Some(f) => f,
+                            None => {
+                                errors.fetch_add(1, Ordering::Relaxed);
+                                processed.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+
+                        // Step 1: Compute order of the ell=2 prime form (cheap).
+                        let order = element_order_bounded(&group, &f, n_max);
+
+                        // Skip if order > n_max (not relevant to any output line).
+                        if order == 0 {
+                            skipped.fetch_add(1, Ordering::Relaxed);
+                            processed.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+
+                        let idx = order as usize;
+
+                        // Skip if |d| exceeds the bound for this order.
+                        if abs_d > bounds[idx] {
+                            skipped.fetch_add(1, Ordering::Relaxed);
+                            processed.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+
+                        counts[idx].fetch_add(1, Ordering::Relaxed);
+
+                        // Step 2: Skip expensive group computation if this n
+                        // is already resolved.
+                        if found_order_4[idx].load(Ordering::Relaxed) {
+                            skipped.fetch_add(1, Ordering::Relaxed);
+                            processed.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+
+                        // Step 3: Compute full group to check for order-4
+                        // elements.
+                        let h_star = h_lower_bound(d, primes);
+                        let result = match compute_group_bjt(d, 1, h_star, 0) {
+                            Ok(r) => r,
+                            Err(_) => {
+                                errors.fetch_add(1, Ordering::Relaxed);
+                                processed.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+
+                        let has_order_4 =
+                            result.invariants.iter().any(|&inv| inv % 4 == 0);
+                        if has_order_4
+                            && found_order_4[idx]
+                                .compare_exchange(
+                                    false,
+                                    true,
+                                    Ordering::SeqCst,
+                                    Ordering::Relaxed,
+                                )
+                                .is_ok()
+                        {
+                            let resolved =
+                                num_resolved.fetch_add(1, Ordering::Relaxed) + 1;
+                            eprintln!(
+                                "[resolved] n={} after {} discriminants",
+                                order,
+                                processed.load(Ordering::Relaxed) + 1,
+                            );
+                            if resolved >= n_max as usize {
+                                eprintln!(
+                                    "[early termination] all n=1..={} resolved",
+                                    n_max,
+                                );
                             }
                         }
+
                         let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                         if done == total || done % 100_000 == 0 {
                             let secs = started.elapsed().as_secs_f64().max(0.001);
                             let rate = done as f64 / secs;
                             eprintln!(
-                                "[progress] {}/{} ({:.1}%), {:.0} disc/s",
+                                "[progress] {}/{} ({:.1}%), {:.0} disc/s, \
+                                 {}/{} n-values resolved, {} skipped",
                                 done,
                                 total,
                                 done as f64 * 100.0 / total as f64,
                                 rate,
+                                num_resolved.load(Ordering::Relaxed),
+                                n_max,
+                                skipped.load(Ordering::Relaxed),
                             );
                         }
                     }
-                    local
                 })
             })
             .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap())
-            .collect()
+        for h in handles {
+            h.join().unwrap();
+        }
     });
 
     let err_count = errors.load(Ordering::Relaxed);
@@ -286,25 +366,16 @@ fn main() {
         eprintln!("{} discriminants failed (skipped)", err_count);
     }
     eprintln!(
-        "Done in {:.1}s, {} results",
+        "Done in {:.1}s, {} processed, {} skipped",
         started.elapsed().as_secs_f64(),
-        results.len()
+        processed.load(Ordering::Relaxed),
+        skipped.load(Ordering::Relaxed),
     );
 
     for n in 1..=n_max {
-        let bound = 4u64.saturating_mul(1u64.checked_shl(n as u32).unwrap_or(u64::MAX));
-        let bound = bound.saturating_sub(1);
-        let mut count = 0u64;
-        let mut any_has_order_4 = false;
-        for r in &results {
-            if r.order == n && r.d.unsigned_abs() <= bound {
-                count += 1;
-                if r.has_order_4 {
-                    any_has_order_4 = true;
-                }
-            }
-        }
-        let all_no_order_4 = !any_has_order_4;
+        let resolved = found_order_4[n as usize].load(Ordering::Relaxed);
+        let count = counts[n as usize].load(Ordering::Relaxed);
+        let all_no_order_4 = !resolved;
         println!("{}\t{}\t({})", n, all_no_order_4, count);
     }
 }
