@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use clgrp::bjt::compute_group_bjt;
 use malachite::base::num::arithmetic::traits::KroneckerSymbol;
@@ -35,6 +35,40 @@ impl Iterator for Discriminants {
         }
         Some(-self.abs_d)
     }
+}
+
+fn remove_ell_fast_i32(mut x: i32, ell: i32) -> i32 {
+    // Basic guard rails
+    if x == 0 || ell == 0 || ell == 1 {
+        return x;
+    }
+    if ell == -1 {
+        return x.abs();
+    }
+
+    let ell = ell.abs(); // Valuation is defined for the prime's magnitude
+
+    // 1. Successive Squaring Strategy
+    let mut p = ell;
+    while let Some(p_squared) = p.checked_mul(p) {
+        if x % p_squared == 0 {
+            p = p_squared;
+        } else {
+            break;
+        }
+    }
+
+    // 2. Strip the large blocks
+    while x % p == 0 {
+        x /= p;
+    }
+
+    // 3. Clean up the remainder (in case p was a large power)
+    while x % ell == 0 {
+        x /= ell;
+    }
+
+    x
 }
 
 /// A set of (d, r) pairs from the universe {(d, r) : d > 3, r >= d - 1},
@@ -280,12 +314,102 @@ fn element_order(d: i64, h: u64) -> u64 {
     let pdivs = prime_divisors(h);
     let mut n = h;
     for &p in &pdivs {
-        let f_np = group.pow_u32(&f, (n / p) as u32);
-        if group.is_id(&f_np) {
-            n = n / p;
+        while n % p == 0 {
+            let f_np = group.pow_u32(&f, (n / p) as u32);
+            if group.is_id(&f_np) {
+                n /= p;
+            } else {
+                break;
+            }
         }
     }
     n
+}
+
+pub struct Order {
+    pub disc: i64,
+    pub h: i64,
+    pub invariants: Vec<i64>,
+    pub order: u64,
+    pub structure: Structure,
+}
+
+impl std::fmt::Debug for Order {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "D = {}\tn = {}\th = {}\t{:?}\t{:?}",
+            self.disc, self.order, self.h, self.invariants, self.structure
+        )
+    }
+}
+
+/// d = 0,4,5,...
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Structure {
+    data: Vec<Vec<i64>>,
+    pub d0: u32,
+    pub exp: i64,
+}
+
+impl Structure {
+    pub fn new(d: i64, h: i32) -> Self {
+        let init = remove_ell_fast_i32(h, 2);
+        let h_star = h / init;
+        let mut out = vec![];
+        let invariants = compute_group_bjt(d, init, h_star, 2).unwrap();
+        let exponent = invariants.invariants[0];
+        out.push(invariants.invariants);
+        let mut depth = 0;
+
+        let mut h = h * 8;
+        let mut d = d * 256;
+        depth = 4;
+        let init = remove_ell_fast_i32(h, 2);
+        let invariants = compute_group_bjt(d, init, h / init, 2).unwrap();
+        if invariants.invariants[0] > exponent {
+            out.push(invariants.invariants);
+            return Self {
+                data: out,
+                d0: depth,
+                exp: exponent,
+            };
+        }
+        out.push(invariants.invariants);
+
+        loop {
+            h *= 2;
+            d *= 4;
+            depth += 1;
+            let init = remove_ell_fast_i32(h, 2);
+            let invariants = compute_group_bjt(d, init, h / init, 2).unwrap();
+            if invariants.invariants[0] > exponent {
+                out.push(invariants.invariants);
+                break;
+            }
+            out.push(invariants.invariants);
+        }
+
+        Self {
+            data: out,
+            d0: depth,
+            exp: exponent,
+        }
+    }
+}
+
+impl std::fmt::Debug for Structure {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.data
+                .iter()
+                .map(|i| format!("{:?}", i))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
+    }
 }
 
 fn main() {
@@ -311,9 +435,48 @@ fn main() {
             let result = compute_group_bjt(d, 1, h_star, 0).unwrap();
             (d, result.h, result.invariants)
         })
+        // filter out things that don't have an element of order 4
         .filter(|(_, _, invariants)| invariants.iter().any(|i| i % 4 == 0))
+        // filter out things with prime above 2 have order larger than max.
         .filter_map(|(d, h, invariants)| {
             let order = element_order(d, h as u64);
             (order <= max_n).then(|| (d, h, invariants, order))
-        });
+        })
+        .map(|(d, h, invariants, order)| {
+            let structure = Structure::new(d, h as i32);
+            Order {
+                disc: d,
+                h,
+                invariants,
+                order,
+                structure,
+            }
+        })
+        // filter out cases when exp = 4 (8, ...) and d_0 >= 5 (6, ...).
+        // (i.e. d_0 >= log_2(exp) + 3)
+        .filter(|order| {
+            let e = order.structure.exp.ilog2() + 3;
+            !(order.structure.d0 >= e)
+        })
+        // now d_0 < log_2(exp) + 3
+        // exp is exponent of S_0
+        // d_0 is first d where the exponent increased (i.e. exp at d_0 = 2 * exp at (d_0 - 1)).
+        //
+        // Group unique structures by order.
+        .fold(
+            BTreeMap::<u64, HashSet<Structure>>::new(),
+            |mut map, entry| {
+                map.entry(entry.order).or_default().insert(entry.structure);
+                map
+            },
+        );
+
+    discs.iter().for_each(|entry| {
+        println!("n = {}", entry.0);
+        let mut sorted: Vec<_> = entry.1.iter().collect();
+        sorted.sort_by(|a, b| a.exp.cmp(&b.exp).then_with(|| a.d0.cmp(&b.d0)));
+        for s in sorted {
+            println!("  ({}, {})\t{:?}", s.exp, s.d0, s);
+        }
+    });
 }
