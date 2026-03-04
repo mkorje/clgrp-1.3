@@ -452,12 +452,12 @@ fn main() {
                 structure,
             }
         })
-        // filter out cases when exp = 4 (8, ...) and d_0 >= 5 (6, ...).
-        // (i.e. d_0 >= log_2(exp) + 3)
-        .filter(|order| {
-            let e = order.structure.exp.ilog2() + 3;
-            !(order.structure.d0 >= e)
-        })
+        // // filter out cases when exp = 4 (8, ...) and d_0 >= 5 (6, ...).
+        // // (i.e. d_0 >= log_2(exp) + 3)
+        // .filter(|order| {
+        //     let e = order.structure.exp.ilog2() + 3;
+        //     !(order.structure.d0 >= e)
+        // })
         // now d_0 < log_2(exp) + 3
         // exp is exponent of S_0
         // d_0 is first d where the exponent increased (i.e. exp at d_0 = 2 * exp at (d_0 - 1)).
