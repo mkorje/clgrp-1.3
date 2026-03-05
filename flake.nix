@@ -39,11 +39,11 @@
         ];
 
         buildInputs = with pkgs; [
-          # openmpi
-          # gmp
+          openmpi
+          gmp
           # pari
-          # self.packages.${system}.optarith
-          # self.packages.${system}.qform
+          liboptarith.packages.${system}.optarith
+          libqform.packages.${system}.qform
           # gdb
           # valgrind
           # hwloc

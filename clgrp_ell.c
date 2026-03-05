@@ -152,6 +152,9 @@ void process_clgrp_file(const int index, const long D_total,
             h /= 3;
         }
         
+        if (kron == 1) {
+            sprintf(output_line, "%d\t%d\t0\n", dist, (int)kron);
+        } else {
         /* Compute class structure of order of index ell^2 */
 				init_pow = 1;
 				h_cur_factors = h_factors[h];
@@ -181,7 +184,7 @@ void process_clgrp_file(const int index, const long D_total,
 
         h = result[0] * init_pow;
         result[1] *= init_pow;
-        
+
 
 
         /* Format output line: dist kron c1 c2 ... ct */
@@ -201,6 +204,7 @@ void process_clgrp_file(const int index, const long D_total,
     			#ifdef WITH_PARI
     			pari_verify(result + 1, -D_sub);
     			#endif
+        } /* end kron != 1 */
 
         fputs(output_line, outfd);
         // fflush(outfd);
@@ -217,6 +221,6 @@ void process_clgrp_file(const int index, const long D_total,
     htab_clear(&Q);
     gettimeofday(&end, NULL);
     exec_time = (end.tv_sec * 1e6 + end.tv_usec) - (begin.tv_sec * 1e6 + begin.tv_usec);
-    printf("index=%d, ell=%ld, took %.3f\n", index, ell, exec_time / 1e6);
+    printf("index=%d, a=%d, m=%d, ell=%ld, took %.3f\n", index, a, m, ell, exec_time / 1e6);
     fflush(stdout);
 }
