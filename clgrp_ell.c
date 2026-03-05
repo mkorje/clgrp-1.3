@@ -65,7 +65,7 @@ void process_clgrp_file(const int index, const long D_total,
 
     const long D_max = (index + 1) * D_total * m;
     // compute an upper bound on the size of the table
-    int h_max = h_upper_bound(-D_max * ell * ell * ell * ell);
+    long h_max = h_upper_bound(-D_max * ell * ell * ell * ell);
     int table_size = next_prime((((int) sqrt(h_max)) << 1) - 1);
     // fprintf(stderr, "D_max: %ld, h_max: %ld, max prime: %ld\n", D_max, h_max, (((long) sqrt(h_max)) << 1) - 1);
     if (table_size == -1)
