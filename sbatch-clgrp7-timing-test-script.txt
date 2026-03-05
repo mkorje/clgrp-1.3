@@ -1,0 +1,41 @@
+#!/bin/bash
+
+#SBATCH --partition=sapphire
+#SBATCH --job-name="clgrp7-timing-test"
+#SBATCH --account="punim2890"
+#SBATCH --ntasks=13
+#SBATCH --mail-user=m.kortge@unimelb.edu.au
+#SBATCH --mail-type=ALL
+#SBATCH --time=0-1:0:00
+
+if [ "x$SLURM_JOB_ID" == "x" ]; then
+   echo "You need to submit your job to the queuing system with sbatch"
+   exit 1
+fi
+
+cd /data/gpfs/projects/punim2890
+
+module purge
+module load gompi/2024a
+module load git/2.45.1
+module load GMP/6.3.0
+module load Autotools/20231222
+
+WD="clgrp${SLURM_JOB_ID}"
+git clone -b speed-test https://github.com/mkorje/clgrp-1.3.git "$WD"
+cd "$WD"
+
+make distclean
+automake --add-missing
+autoreconf
+automake --add-missing
+autoreconf
+./configure CC=mpicc CPPFLAGS="-DKEEP_FILES -I../liboptarith/include -I../libqform/include" LDFLAGS="-L../liboptarith/lib -L../libqform/lib" LIBS="-lm"
+make LDFLAGS="-L../liboptarith/lib -L../libqform/lib"
+
+srun -n "$SLURM_NTASKS" ./clgrp_ell 137438953472 512 7 ../data
+
+cd ../
+rm -rf "$WD"
+
+my-job-stats -a -n -s

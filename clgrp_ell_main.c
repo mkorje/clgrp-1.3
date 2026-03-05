@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <unistd.h>
 
 #ifdef WITH_PARI
 #include <pari/pari.h>
@@ -14,6 +15,9 @@
 
 static const int congruences[4][2] = {{3, 8}, {7, 8}, {4, 16}, {8, 16}};
 #define NUM_CONGRUENCES 4
+
+static const int special_indices[] = {0, 255, 511};
+#define NUM_SPECIAL ((int)(sizeof(special_indices) / sizeof(special_indices[0])))
 
 int main(int argc, char *argv[])
 {
@@ -35,7 +39,7 @@ int main(int argc, char *argv[])
     const long files = atol(argv[2]);
     const long ell = atol(argv[3]);
     const char *folder = argv[4];
-    const long total_work = NUM_CONGRUENCES * files;
+    const long total_work = NUM_CONGRUENCES * NUM_SPECIAL;
 
     int myrank, idx = 0;
     int work_item[3]; /* {file_index, a, m} */
@@ -50,14 +54,19 @@ int main(int argc, char *argv[])
                D_max, files, ell, folder);
         fflush(stdout);
 
-        /* Verify all input files exist before starting */
+        /* Verify input files exist for special indices before starting */
         for (int ci = 0; ci < NUM_CONGRUENCES; ci++)
         {
             int a = congruences[ci][0], m = congruences[ci][1];
-            if (!verify_input_files_exist(folder, a, m, files))
+            for (int si = 0; si < NUM_SPECIAL; si++)
             {
-                fprintf(stderr, "Error: Not all input files exist for a=%d, m=%d. Aborting.\n", a, m);
-                MPI_Abort(MPI_COMM_WORLD, 1);
+                char name[512];
+                sprintf(name, "%s/cl%dmod%d/cl%dmod%d.%d.gz", folder, a, m, a, m, special_indices[si]);
+                if (access(name, F_OK) == -1)
+                {
+                    fprintf(stderr, "Missing input file: %s\n", name);
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                }
             }
         }
 
@@ -82,8 +91,8 @@ int main(int argc, char *argv[])
         {
             if (j < total_work)
             {
-                int ci = j / files;
-                work_item[0] = j % files;
+                int ci = j / NUM_SPECIAL;
+                work_item[0] = special_indices[j % NUM_SPECIAL];
                 work_item[1] = congruences[ci][0];
                 work_item[2] = congruences[ci][1];
                 MPI_Send(work_item, 3, MPI_INT, j + 1, 0, MPI_COMM_WORLD);
