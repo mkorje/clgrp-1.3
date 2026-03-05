@@ -13,18 +13,19 @@
 #include "clgrp_ell.h"
 #include "sieve.h"
 
+static const int congruences[4][2] = {{3, 8}, {7, 8}, {4, 16}, {8, 16}};
+#define NUM_CONGRUENCES 4
+
 int main(int argc, char *argv[])
 {
     MPI_Init(&argc, &argv);
 
-    if (argc != 7)
+    if (argc != 5)
     {
-        fprintf(stderr, "Format: mpirun -np [#procs] ./clgrp_ell [D_max] [files] [a] [m] [ell] [folder]\n");
+        fprintf(stderr, "Format: mpirun -np [#procs] ./clgrp_ell [D_max] [files] [ell] [folder]\n");
         fprintf(stderr, "\n");
         fprintf(stderr, "  D_max  - maximum |discriminant|\n");
         fprintf(stderr, "  files  - number of input files (must divide D_max)\n");
-        fprintf(stderr, "  a      - congruence class (|D| = a mod m)\n");
-        fprintf(stderr, "  m      - modulus (8 or 16)\n");
         fprintf(stderr, "  ell    - prime for Kronecker symbol and order computation\n");
         fprintf(stderr, "  folder - base folder containing cl[a]mod[m]/ directories\n");
         MPI_Finalize();
@@ -33,16 +34,15 @@ int main(int argc, char *argv[])
 
     long D_max = atol(argv[1]);
     const long files = atol(argv[2]);
-    const int a = atoi(argv[3]);
-    const int m = atoi(argv[4]);
-    const long ell = atol(argv[5]);
-    const char *folder = argv[6];
-    const long D_total = D_max / (files * m);
+    const long ell = atol(argv[3]);
+    const char *folder = argv[4];
+    const long total_work = NUM_CONGRUENCES * files;
 
     int * primes;
     int ** h_factors;
 
     int i, myrank, idx = 0;
+    int work_item[3]; /* {file_index, a, m} */
 
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
@@ -50,19 +50,22 @@ int main(int argc, char *argv[])
     {
         /* Master process: verify input files and distribute work */
 
-        printf("clgrp_ell: D_max=%ld, files=%ld, a=%d, m=%d, ell=%ld, folder=%s\n",
-               D_max, files, a, m, ell, folder);
-        printf("D_total=%ld\n", D_total);
+        printf("clgrp_ell: D_max=%ld, files=%ld, ell=%ld, folder=%s\n",
+               D_max, files, ell, folder);
         fflush(stdout);
 
         /* Verify all input files exist before starting */
-        if (!verify_input_files_exist(folder, a, m, files))
+        for (int ci = 0; ci < NUM_CONGRUENCES; ci++)
         {
-            fprintf(stderr, "Error: Not all input files exist. Aborting.\n");
-            MPI_Abort(MPI_COMM_WORLD, 1);
+            int a = congruences[ci][0], m = congruences[ci][1];
+            if (!verify_input_files_exist(folder, a, m, files))
+            {
+                fprintf(stderr, "Error: Not all input files exist for a=%d, m=%d. Aborting.\n", a, m);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
         }
 
-        printf("All %ld input files verified.\n", files);
+        printf("All %ld input files verified.\n", total_work);
         fflush(stdout);
 
         int num_procs;
@@ -79,33 +82,41 @@ int main(int argc, char *argv[])
         int active_workers = 0;
 
         /* Send initial work to all workers */
-        for (i = 0; i < num_procs; i++)
+        for (long j = 0; j < num_procs; j++)
         {
-            if (i < files)
+            if (j < total_work)
             {
-                MPI_Send(&i, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+                int ci = j / files;
+                work_item[0] = j % files;
+                work_item[1] = congruences[ci][0];
+                work_item[2] = congruences[ci][1];
+                MPI_Send(work_item, 3, MPI_INT, j + 1, 0, MPI_COMM_WORLD);
                 active_workers++;
             }
             else
             {
-                int term = -1;
-                MPI_Send(&term, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
+                int term[3] = {-1, -1, -1};
+                MPI_Send(term, 3, MPI_INT, j + 1, 0, MPI_COMM_WORLD);
             }
         }
 
         /* Distribute remaining work as workers complete */
-        for (i = num_procs; i < files; i++)
+        for (long j = num_procs; j < total_work; j++)
         {
             MPI_Recv(&idx, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Send(&i, 1, MPI_INT, idx, 0, MPI_COMM_WORLD);
+            int ci = j / files;
+            work_item[0] = j % files;
+            work_item[1] = congruences[ci][0];
+            work_item[2] = congruences[ci][1];
+            MPI_Send(work_item, 3, MPI_INT, idx, 0, MPI_COMM_WORLD);
         }
 
         /* Wait for all active workers to finish and terminate them */
         while (active_workers > 0)
         {
             MPI_Recv(&idx, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            int term = -1;
-            MPI_Send(&term, 1, MPI_INT, idx, 0, MPI_COMM_WORLD);
+            int term[3] = {-1, -1, -1};
+            MPI_Send(term, 3, MPI_INT, idx, 0, MPI_COMM_WORLD);
             active_workers--;
         }
 
@@ -146,15 +157,19 @@ int main(int argc, char *argv[])
 
         regular_sieve(h_max, h_max, h_factors, primes, 0);
 
-        /* Worker process: receive file indices and process them */
+        /* Worker process: receive work items and process them */
 
-        MPI_Recv(&idx, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(work_item, 3, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        while (idx != -1)
+        while (work_item[0] != -1)
         {
-            process_clgrp_file(idx, D_total, folder, a, m, ell, h_factors);
+            int file_idx = work_item[0];
+            int a = work_item[1];
+            int m = work_item[2];
+            long D_total = D_max / (files * m);
+            process_clgrp_file(file_idx, D_total, folder, a, m, ell, h_factors);
             MPI_Send(&myrank, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-            MPI_Recv(&idx, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(work_item, 3, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     }
 
