@@ -714,12 +714,12 @@ printf(" to Q\n");
   // fprintf(stderr, "matrix complete, h=%d\n", h);
   // fflush(stderr);
 
+	group_pow_clear(&gp);
+	s64_qform_group_clear(&group);
+
 	if (h != 1)
 	{
 		rank = j;
-
-		group_pow_clear(&gp);
-		s64_qform_group_clear(&group);
 
 #ifdef DEBUG
 printf("ANSWER:\n");
