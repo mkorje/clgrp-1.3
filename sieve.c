@@ -41,7 +41,7 @@ void prime_sieve(const int max_prime, int * primes)
 
 	primes[0] = 0;
 
-	char is_prime[max_prime];
+	char *is_prime = (char *) malloc(max_prime);
 	memset(is_prime, 1, max_prime);
 
 	for (i = 2; i < max_prime; i++)
@@ -58,6 +58,7 @@ void prime_sieve(const int max_prime, int * primes)
 	}
 
 	primes[primes[0] + 1] = 0x7FFFFFFF;
+	free(is_prime);
 }
 
 
