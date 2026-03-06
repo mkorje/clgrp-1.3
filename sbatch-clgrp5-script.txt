@@ -25,8 +25,10 @@
 # ends successfully
 #SBATCH --mail-type=END
 
+#SBATCH --mem-per-cpu=8192
+
 # The maximum running time of the job in days-hours:mins:sec
-#SBATCH --time=3-0:0:00
+#SBATCH --time=0-12:0:00
 
 # check that the script is launched with sbatch
 if [ "x$SLURM_JOB_ID" == "x" ]; then
@@ -59,7 +61,7 @@ autoreconf
 make LDFLAGS="-L../liboptarith/lib -L../libqform/lib"
 
 # run!
-srun -n $SLURM_NTASKS ./clgrp_ell 137438953472 512 5 ../data
+srun -n $SLURM_NTASKS ./clgrp_ell 137438953472 512 5 ../lmfdb
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage
