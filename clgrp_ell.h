@@ -23,6 +23,6 @@ int verify_input_files_exist(const char *folder, int a, int m, long files);
  */
 void process_clgrp_file(const int index, const long D_total,
                         const char *folder, const int a, const int m,
-                        const long ell, int ** h_factors);
+                        const long ell, const int * spf);
 
 #endif /* CLGRP_ELL_H */

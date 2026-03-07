@@ -32,7 +32,7 @@ int verify_input_files_exist(const char *folder, int a, int m, long files)
 
 void process_clgrp_file(const int index, const long D_total,
                         const char *folder, const int a, const int m,
-                        const long ell, int ** h_factors)
+                        const long ell, const int * spf)
 {
     char input_cmd[512], output_name[512], output_dir[512];
     char line[MAX_LINE_LENGTH], data[256];
@@ -100,8 +100,7 @@ void process_clgrp_file(const int index, const long D_total,
     char output_line[MAX_LINE_LENGTH];
     long D_sub;
 
-    int init_pow = 1, h_fac, h_temp, h_fac_total;
-    const int * h_cur_factors;
+    int init_pow = 1, h_temp;
 
     gettimeofday(&begin, NULL);
 
@@ -157,21 +156,18 @@ void process_clgrp_file(const int index, const long D_total,
         } else {
         /* Compute class structure of order of index ell^2 */
 				init_pow = 1;
-				h_cur_factors = h_factors[h];
-				h_fac_total = h_cur_factors[0];
 				h_temp = h;
-
-        // fprintf(stderr, "DEBUG: h=%d, D=%ld, D_sub=%ld, kron=%d, h_fac_total=%d\n", h, D, D_sub, kron, h_fac_total);
-        // fflush(stderr);
-				for (int i = 1; i <= h_fac_total; i++)
 				{
-					h_fac = h_cur_factors[i];
-            // fprintf(stderr, "\th_fac=%d\n", h_fac);
-            // fflush(stderr);
-					h_temp /= h_fac;
-					if (h_temp % h_fac != 0)
+					int h_rem = h;
+					while (h_rem > 1)
 					{
-						init_pow *= h_fac;
+						int p = spf[h_rem];
+						h_temp /= p;
+						do { h_rem /= p; } while (h_rem % p == 0);
+						if (h_temp % p != 0)
+						{
+							init_pow *= p;
+						}
 					}
 				}
 

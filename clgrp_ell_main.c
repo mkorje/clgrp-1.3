@@ -11,7 +11,6 @@
 #endif
 
 #include "clgrp_ell.h"
-#include "sieve.h"
 
 static const int congruences[4][2] = {{3, 8}, {7, 8}, {4, 16}, {8, 16}};
 #define NUM_CONGRUENCES 4
@@ -38,10 +37,7 @@ int main(int argc, char *argv[])
     const char *folder = argv[4];
     const long total_work = NUM_CONGRUENCES * files;
 
-    int * primes;
-    int ** h_factors;
-
-    int i, myrank, idx = 0;
+    int myrank, idx = 0;
     int work_item[3]; /* {file_index, a, m} */
 
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -128,34 +124,23 @@ int main(int argc, char *argv[])
 		pari_init(1000000, 0);
 		#endif
 
-        long D_root = sqrt(D_max * ell * ell * ell * ell);
-
-        primes = (int *) malloc(((int) (1.25506 * D_root / log(D_root))) * sizeof(int));
-        prime_sieve(D_root, primes);
-        primes = (int *) realloc(primes, (2 + primes[0]) * sizeof(int));
-
-        int h_max = 0;
-        long temp = 1;
-
         // Ramare's bound
-        h_max = (1/M_PI) * sqrt(D_max) * (0.5 * log(D_max) + 2.5 - log(6)) + 1;
+        int h_max = (1/M_PI) * sqrt(D_max) * (0.5 * log(D_max) + 2.5 - log(6)) + 1;
         h_max *= ell * (ell + 1);
 
-        // compute maximal number of prime factors of a class number
-        for (i = 1; temp < h_max; i++)
+        // Smallest prime factor sieve
+        int *spf = (int *) malloc(h_max * sizeof(int));
+        for (int j = 0; j < h_max; j++) spf[j] = j;
+        for (int j = 2; (long)j * j < h_max; j++)
         {
-            temp *= primes[i];
+            if (spf[j] == j)
+            {
+                for (int k = j * j; k < h_max; k += j)
+                {
+                    if (spf[k] == k) spf[k] = j;
+                }
+            }
         }
-
-        const int h_max_factors = i;
-        h_factors = (int **) malloc(h_max * sizeof(int *));
-
-        for (i = 0; i < h_max; i++)
-        {
-            h_factors[i] = (int *) malloc(h_max_factors * sizeof(int));
-        }
-
-        regular_sieve(h_max, h_max, h_factors, primes, 0);
 
         /* Worker process: receive work items and process them */
 
@@ -167,7 +152,7 @@ int main(int argc, char *argv[])
             int a = work_item[1];
             int m = work_item[2];
             long D_total = D_max / (files * m);
-            process_clgrp_file(file_idx, D_total, folder, a, m, ell, h_factors);
+            process_clgrp_file(file_idx, D_total, folder, a, m, ell, spf);
             MPI_Send(&myrank, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
             MPI_Recv(work_item, 3, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
