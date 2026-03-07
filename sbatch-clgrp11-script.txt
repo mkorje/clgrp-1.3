@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --partition=sapphire
-#SBATCH --job-name="clgrp5"
+#SBATCH --job-name="clgrp11"
 #SBATCH --account="punim2890"
 #SBATCH --ntasks=128
 #SBATCH --mail-user=m.kortge@unimelb.edu.au
@@ -33,7 +33,7 @@ autoreconf
 ./configure CC=mpicc CPPFLAGS="-DKEEP_FILES -I../liboptarith/include -I../libqform/include" LDFLAGS="-L../liboptarith/lib -L../libqform/lib" LIBS="-lm"
 make LDFLAGS="-L../liboptarith/lib -L../libqform/lib"
 
-srun -n "$SLURM_NTASKS" ./clgrp_ell 137438953472 512 5 ../lmfdb
+srun -n "$SLURM_NTASKS" ./clgrp_ell 137438953472 512 11 ../lmfdb
 
 cd ../
 rm -rf "$WD"
