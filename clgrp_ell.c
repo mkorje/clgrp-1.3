@@ -41,13 +41,28 @@ void process_clgrp_file(const int index, const long D_total,
     struct timeval begin, end;
     unsigned long exec_time;
 
-    /* Check if output file already exists */
+    /* Check if compressed output file already exists and is valid */
     sprintf(output_name, "%s/cl%dmod%dl%ld/cl%dmod%dl%ld.%d.gz",
             folder, a, m, ell, a, m, ell, index);
     if (access(output_name, F_OK) != -1)
     {
-        printf("Output file %s already exists, skipping.\n", output_name);
-        return;
+        sprintf(input_cmd, "gzip -t %s", output_name);
+        if (system(input_cmd) == 0)
+        {
+            printf("Output file %s already exists, skipping.\n", output_name);
+            return;
+        }
+        /* Corrupt gz file from interrupted run, remove and reprocess */
+        fprintf(stderr, "Removing corrupt output file %s\n", output_name);
+        remove(output_name);
+    }
+
+    /* Remove any partial uncompressed output from a previous interrupted run */
+    sprintf(output_name, "%s/cl%dmod%dl%ld/cl%dmod%dl%ld.%d",
+            folder, a, m, ell, a, m, ell, index);
+    if (access(output_name, F_OK) != -1)
+    {
+        remove(output_name);
     }
 
     /* Open input file via gunzip */
