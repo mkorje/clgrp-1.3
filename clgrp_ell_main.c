@@ -107,14 +107,20 @@ int main(int argc, char *argv[])
             MPI_Send(work_item, 3, MPI_INT, idx, 0, MPI_COMM_WORLD);
         }
 
-        /* Wait for all active workers to finish and terminate them */
-        while (active_workers > 0)
+        /* Wait for all active workers to finish, then terminate them all
+         * at once so they reach MPI_Finalize at roughly the same time
+         * (avoids PMIx collective timeout from staggered Finalize calls) */
+        int *finished = (int *)malloc(active_workers * sizeof(int));
+        for (int i = 0; i < active_workers; i++)
         {
-            MPI_Recv(&idx, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            int term[3] = {-1, -1, -1};
-            MPI_Send(term, 3, MPI_INT, idx, 0, MPI_COMM_WORLD);
-            active_workers--;
+            MPI_Recv(&finished[i], 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
+        for (int i = 0; i < active_workers; i++)
+        {
+            int term[3] = {-1, -1, -1};
+            MPI_Send(term, 3, MPI_INT, finished[i], 0, MPI_COMM_WORLD);
+        }
+        free(finished);
 
         printf("All files processed.\n");
     }
