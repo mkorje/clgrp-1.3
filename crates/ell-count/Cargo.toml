@@ -1,0 +1,10 @@
+[package]
+name = "ell-count"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+flate2 = { workspace = true }
+clap = { workspace = true }
+rayon = { workspace = true }
