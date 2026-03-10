@@ -2,6 +2,7 @@
 verify
 /clgrp
 clgrp_ell
+ell_count
 clgrp_ell_new
 
 rust/target

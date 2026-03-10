@@ -1,0 +1,85 @@
+#!/bin/bash
+# Created by the University of Melbourne job script generator for SLURM
+# Thu Mar 05 2026 00:03:01 GMT+0000 (Greenwich Mean Time)
+
+# Partition for the job:
+#SBATCH --partition=sapphire
+
+# The name of the job:
+#SBATCH --job-name="compile-libs"
+
+# The project ID which this job should run under:
+#SBATCH --account="punim2890"
+
+# Maximum number of tasks/CPU cores used by the job:
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+# 
+# Use this email address:
+#SBATCH --mail-user=m.kortge@unimelb.edu.au
+
+# Send yourself an email when the job:
+# aborts abnormally (fails)
+#SBATCH --mail-type=FAIL
+# begins
+#SBATCH --mail-type=BEGIN
+# ends successfully
+#SBATCH --mail-type=END
+
+#SBATCH --mem=32768
+
+# The maximum running time of the job in days-hours:mins:sec
+#SBATCH --time=0-1:0:00
+
+# check that the script is launched with sbatch
+if [ "x$SLURM_JOB_ID" == "x" ]; then
+   echo "You need to submit your job to the queuing system with sbatch"
+   exit 1
+fi
+
+# Run the job from this directory:
+cd /data/gpfs/projects/punim2890
+
+# The modules to load:
+module purge
+module load git/2.45.1
+module load GMP/6.3.0
+module load GCCcore/11.3.0
+module load SCons/4.4.0
+
+# The job command(s):
+# compile liboptarith
+if [ -d "liboptarith" ]; then
+   rm -rf liboptarith
+fi
+git clone https://github.com/mkorje/liboptarith.git
+cd liboptarith
+g++ -I. code_gen/gen_sqrtmodp.cc primes.c -o code_gen/gen_sqrtmodp -lgmp
+./code_gen/gen_sqrtmodp 104729
+scons
+mkdir -p lib
+install -m644 liboptarith.a lib/
+install -m644 liboptarithxx.a lib/
+mkdir -p include/liboptarith/gcd
+install -m644 *.h include/liboptarith/
+install -m644 gcd/*.h include/liboptarith/gcd/
+cd ../
+
+# compile libqform
+if [ -d "libqform" ]; then
+   rm -rf libqform
+fi
+
+git clone https://github.com/mkorje/libqform.git
+cd libqform
+scons
+install -Dm644 libqform.a lib/libqform.a
+mkdir -p include/libqform/dbreps
+install -m644 *.h include/libqform/
+install -m644 dbreps/*.h include/libqform/dbreps/
+cd ../
+
+##DO NOT ADD/EDIT BEYOND THIS LINE##
+##Job monitor command to list the resource usage
+my-job-stats -a -n -s
