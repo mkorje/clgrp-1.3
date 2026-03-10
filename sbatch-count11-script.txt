@@ -6,7 +6,7 @@
 #SBATCH --ntasks=256
 #SBATCH --mail-user=m.kortge@unimelb.edu.au
 #SBATCH --mail-type=ALL
-#SBATCH --time=0-02:0:00
+#SBATCH --time=0-0:5:00
 
 # check that the script is launched with sbatch
 if [ "x$SLURM_JOB_ID" == "x" ]; then
@@ -33,7 +33,7 @@ autoreconf
 ./configure CC=mpicc CPPFLAGS="-DKEEP_FILES -I../liboptarith/include -I../libqform/include" LDFLAGS="-L../liboptarith/lib -L../libqform/lib" LIBS="-lm"
 make LDFLAGS="-L../liboptarith/lib -L../libqform/lib"
 
-srun -n "$SLURM_NTASKS" ./ell_count ../lmfdb 11 137438953472 512 > ../ell11.csv
+srun -n "$SLURM_NTASKS" ./ell_count ../lmfdb 11 137438953472 512 > ../ell11-test.csv
 
 cd ../
 rm -rf "$WD"

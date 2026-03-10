@@ -46,43 +46,57 @@
 #include <string.h>
 
 #define MAX_LINE 4096
-#define MAX_EXP 20
 #define NUM_CLASSES 4
 
 /*
- * Flat counts array layout (51 uint64_t values):
+ * Flat counts array layout (12 + 6*(MAX_RANK+1) uint64_t values):
  *
- *  [0]        total
- *  [1]        inert
- *  [2]        inert_cyclic
- *  [3]        inert_rank_inc
- *  [4]        inert_cyc_rank_inc
- *  [5..25]    inert_cyc_no_inc_by_exp[0..MAX_EXP]
- *  [26]       ramified
- *  [27]       ramified_cyclic
- *  [28]       ramified_rank_inc
- *  [29]       ramified_cyc_rank_inc
- *  [30..50]   ramified_cyc_no_inc_by_exp[0..MAX_EXP]
+ *  [0]                      total
+ *  [1]                      inert
+ *  [2]                      ramified
+ *  [3]                      split
+ *  [4]                      inert_trivial
+ *  [5]                      inert_non_trivial
+ *  [6]                      ram_trivial
+ *  [7]                      ram_non_trivial
+ *  [8]                      inert_rank_inc     (ell-rank of ell file > fundamental)
+ *  [9]                      inert_rank_same    (ell-rank of ell file == fundamental)
+ *  [10]                     ram_rank_inc
+ *  [11]                     ram_rank_same
+ *  [12 .. 12+MAX_RANK]      inert_by_rank[0..MAX_RANK]
+ *  [13+MAX_RANK .. 13+2*MAX_RANK+1]  inert_by_rank_inc[0..MAX_RANK]
+ *  [14+2*MAX_RANK .. 14+3*MAX_RANK+2]  inert_by_rank_same[0..MAX_RANK]
+ *  [15+3*MAX_RANK .. 15+4*MAX_RANK+3]  ram_by_rank[0..MAX_RANK]
+ *  [16+4*MAX_RANK .. 16+5*MAX_RANK+4]  ram_by_rank_inc[0..MAX_RANK]
+ *  [17+5*MAX_RANK .. 17+6*MAX_RANK+5]  ram_by_rank_same[0..MAX_RANK]
  */
-#define COUNTS_N (5 + (MAX_EXP + 1) + 4 + (MAX_EXP + 1)) /* 51 */
+#define MAX_RANK 20
+#define COUNTS_N (12 + 6 * (MAX_RANK + 1))
 
-#define C_TOTAL          0
-#define C_INERT          1
-#define C_INERT_CYC      2
-#define C_INERT_RANK_INC 3
-#define C_INERT_CYC_RI   4
-#define C_INERT_BY_EXP   5                   /* [5..25] */
-#define C_RAMIFIED       (5 + MAX_EXP + 1)  /* 26 */
-#define C_RAM_CYC        (C_RAMIFIED + 1)   /* 27 */
-#define C_RAM_RANK_INC   (C_RAMIFIED + 2)   /* 28 */
-#define C_RAM_CYC_RI     (C_RAMIFIED + 3)   /* 29 */
-#define C_RAM_BY_EXP     (C_RAMIFIED + 4)   /* [30..50] */
+#define C_TOTAL                 0
+#define C_INERT                 1
+#define C_RAMIFIED              2
+#define C_SPLIT                 3
+#define C_INERT_TRIVIAL         4
+#define C_INERT_NONTRIVIAL      5
+#define C_RAM_TRIVIAL           6
+#define C_RAM_NONTRIVIAL        7
+#define C_INERT_RANK_INC        8
+#define C_INERT_RANK_SAME       9
+#define C_RAM_RANK_INC          10
+#define C_RAM_RANK_SAME         11
+#define C_INERT_BY_RANK         12                          /* [12..32] */
+#define C_INERT_BY_RANK_INC     (12 +     MAX_RANK + 1)    /* [33..53] */
+#define C_INERT_BY_RANK_SAME    (12 + 2 * (MAX_RANK + 1))  /* [54..74] */
+#define C_RAM_BY_RANK           (12 + 3 * (MAX_RANK + 1))  /* [75..95] */
+#define C_RAM_BY_RANK_INC       (12 + 4 * (MAX_RANK + 1))  /* [96..116] */
+#define C_RAM_BY_RANK_SAME      (12 + 5 * (MAX_RANK + 1))  /* [117..137] */
 
 /* Response buffer sent from worker to coordinator:
  *   resp[0]       = work_idx (cast to uint64_t)
- *   resp[1..51]   = counts[COUNTS_N]
+ *   resp[1..N]    = counts[COUNTS_N]
  */
-#define RESP_N (1 + COUNTS_N) /* 52 */
+#define RESP_N (1 + COUNTS_N)
 
 /* The four congruence classes processed, matching the Rust crate. */
 static const int CLASSES[NUM_CLASSES][2] = {
@@ -103,7 +117,7 @@ static uint32_t ell_val(uint64_t n, uint64_t ell)
 }
 
 /*
- * Process one (congruence class, file index) pair and write 51 aggregate
+ * Process one (congruence class, file index) pair and write 8 aggregate
  * counts into `counts`.
  *
  * Reads two gzipped files in lockstep:
@@ -162,17 +176,11 @@ static void process_file(
 		if (tok == NULL)
 			continue;
 
-		int      fund_ell_rank = 0;
-		uint32_t fund_ell_exp  = 0;
+		int fund_ell_rank = 0;
 		while ((tok = strtok(NULL, " \t\n")) != NULL) {
 			uint64_t c = strtoull(tok, NULL, 10);
-			if (c > 0) {
-				uint32_t v = ell_val(c, (uint64_t)ell);
-				if (v > 0)
-					fund_ell_rank++;
-				if (v > fund_ell_exp)
-					fund_ell_exp = v;
-			}
+			if (c > 0 && ell_val(c, (uint64_t)ell) > 0)
+				fund_ell_rank++;
 		}
 		fund_d += fund_dist * (long)m;
 
@@ -203,31 +211,39 @@ static void process_file(
 			break;
 		}
 
-		int cyclic   = (fund_ell_rank <= 1);
-		int rank_inc = (ell_ell_rank > fund_ell_rank);
+		int trivial = (fund_ell_rank == 0);
+		int r = (fund_ell_rank <= MAX_RANK) ? fund_ell_rank : MAX_RANK;
 
 		counts[C_TOTAL]++;
 
 		if (kron == -1) {
 			counts[C_INERT]++;
-			if (cyclic)            counts[C_INERT_CYC]++;
-			if (rank_inc)          counts[C_INERT_RANK_INC]++;
-			if (cyclic && rank_inc) counts[C_INERT_CYC_RI]++;
-			if (cyclic && (!rank_inc || fund_ell_exp == 0)) {
-				uint32_t e = (fund_ell_exp <= MAX_EXP) ? fund_ell_exp : MAX_EXP;
-				counts[C_INERT_BY_EXP + e]++;
+			if (trivial) counts[C_INERT_TRIVIAL]++;
+			else         counts[C_INERT_NONTRIVIAL]++;
+			if (ell_ell_rank > fund_ell_rank) {
+				counts[C_INERT_RANK_INC]++;
+				counts[C_INERT_BY_RANK_INC + r]++;
+			} else {
+				counts[C_INERT_RANK_SAME]++;
+				counts[C_INERT_BY_RANK_SAME + r]++;
 			}
+			counts[C_INERT_BY_RANK + r]++;
 		} else if (kron == 0) {
 			counts[C_RAMIFIED]++;
-			if (cyclic)            counts[C_RAM_CYC]++;
-			if (rank_inc)          counts[C_RAM_RANK_INC]++;
-			if (cyclic && rank_inc) counts[C_RAM_CYC_RI]++;
-			if (cyclic && (!rank_inc || fund_ell_exp == 0)) {
-				uint32_t e = (fund_ell_exp <= MAX_EXP) ? fund_ell_exp : MAX_EXP;
-				counts[C_RAM_BY_EXP + e]++;
+			if (trivial) counts[C_RAM_TRIVIAL]++;
+			else         counts[C_RAM_NONTRIVIAL]++;
+			if (ell_ell_rank > fund_ell_rank) {
+				counts[C_RAM_RANK_INC]++;
+				counts[C_RAM_BY_RANK_INC + r]++;
+			} else {
+				counts[C_RAM_RANK_SAME]++;
+				counts[C_RAM_BY_RANK_SAME + r]++;
 			}
+			counts[C_RAM_BY_RANK + r]++;
+		} else {
+			/* kron == 1: split */
+			counts[C_SPLIT]++;
 		}
-		/* kron == 1 (split): counted only in total */
 	}
 
 	pclose(fund_f);
@@ -341,54 +357,195 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		/* Find max non-zero exponent columns to display */
-		int max_inert_exp = 0, max_ram_exp = 0;
+		/* Find max non-zero rank columns to display */
+		int max_inert_rank = 0, max_ram_rank = 0;
 		for (long fi = 0; fi < files; fi++) {
 			uint64_t *c = &cumul[fi * COUNTS_N];
-			for (int e = MAX_EXP; e > max_inert_exp; e--) {
-				if (c[C_INERT_BY_EXP + e] > 0) {
-					max_inert_exp = e;
+			for (int r = MAX_RANK; r > max_inert_rank; r--) {
+				if (c[C_INERT_BY_RANK + r] > 0) {
+					max_inert_rank = r;
 					break;
 				}
 			}
-			for (int e = MAX_EXP; e > max_ram_exp; e--) {
-				if (c[C_RAM_BY_EXP + e] > 0) {
-					max_ram_exp = e;
+			for (int r = MAX_RANK; r > max_ram_rank; r--) {
+				if (c[C_RAM_BY_RANK + r] > 0) {
+					max_ram_rank = r;
 					break;
 				}
 			}
 		}
 
 		/* CSV header */
-		printf("boundary,total,inert,inert_cyclic,inert_rank_inc"
-		       ",inert_cyc_rank_inc");
-		for (int e = 0; e <= max_inert_exp; e++)
-			printf(",inert_cyc_no_inc_e%d", e);
-		printf(",ramified,ramified_cyclic,ramified_rank_inc"
-		       ",ramified_cyc_rank_inc");
-		for (int e = 0; e <= max_ram_exp; e++)
-			printf(",ram_cyc_no_inc_e%d", e);
-		printf(",total_cyc_rank_inc\n");
+		printf("boundary,total,inert,ramified,split"
+		       ",inert_trivial,inert_non_trivial"
+		       ",inert_rank_inc,inert_rank_same");
+		for (int r = 0; r <= max_inert_rank; r++)
+			printf(",inert_rank_%d,inert_rank_%d_inc,inert_rank_%d_same",
+			       r, r, r);
+		printf(",ramified_trivial,ramified_non_trivial"
+		       ",ramified_rank_inc,ramified_rank_same");
+		for (int r = 0; r <= max_ram_rank; r++)
+			printf(",ramified_rank_%d,ramified_rank_%d_inc,ramified_rank_%d_same",
+			       r, r, r);
+		printf("\n");
 
 		/* CSV data rows — one row per file index */
 		for (long fi = 0; fi < files; fi++) {
 			uint64_t *c      = &cumul[fi * COUNTS_N];
 			long      boundary = (fi + 1) * step;
 
-			printf("%ld,%" PRIu64 ",%" PRIu64 ",%" PRIu64
-			       ",%" PRIu64 ",%" PRIu64,
+			/* Verify row consistency */
+			if (c[C_INERT] + c[C_RAMIFIED] + c[C_SPLIT] != c[C_TOTAL]) {
+				fprintf(stderr,
+					"ERROR: inert+ramified+split != total"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			if (c[C_INERT_TRIVIAL] + c[C_INERT_NONTRIVIAL] != c[C_INERT]) {
+				fprintf(stderr,
+					"ERROR: inert_trivial+inert_non_trivial != inert"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			if (c[C_RAM_TRIVIAL] + c[C_RAM_NONTRIVIAL] != c[C_RAMIFIED]) {
+				fprintf(stderr,
+					"ERROR: ramified_trivial+ramified_non_trivial != ramified"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			if (c[C_INERT_BY_RANK + 0] != c[C_INERT_TRIVIAL]) {
+				fprintf(stderr,
+					"ERROR: inert_rank_0 != inert_trivial"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t inert_rank_pos = 0;
+				for (int r = 1; r <= MAX_RANK; r++)
+					inert_rank_pos += c[C_INERT_BY_RANK + r];
+				if (inert_rank_pos != c[C_INERT_NONTRIVIAL]) {
+					fprintf(stderr,
+						"ERROR: sum(inert_rank_r, r>=1) != inert_non_trivial"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_INERT_RANK_INC] + c[C_INERT_RANK_SAME] != c[C_INERT]) {
+				fprintf(stderr,
+					"ERROR: inert_rank_inc+inert_rank_same != inert"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t sum_inc = 0, sum_same = 0;
+				for (int r = 0; r <= MAX_RANK; r++) {
+					if (c[C_INERT_BY_RANK_INC + r] + c[C_INERT_BY_RANK_SAME + r]
+					    != c[C_INERT_BY_RANK + r]) {
+						fprintf(stderr,
+							"ERROR: inert_rank_%d_inc+inert_rank_%d_same"
+							" != inert_rank_%d at boundary=%ld\n",
+							r, r, r, boundary);
+						MPI_Abort(MPI_COMM_WORLD, 1);
+					}
+					sum_inc  += c[C_INERT_BY_RANK_INC  + r];
+					sum_same += c[C_INERT_BY_RANK_SAME + r];
+				}
+				if (sum_inc != c[C_INERT_RANK_INC]) {
+					fprintf(stderr,
+						"ERROR: sum(inert_rank_r_inc) != inert_rank_inc"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				if (sum_same != c[C_INERT_RANK_SAME]) {
+					fprintf(stderr,
+						"ERROR: sum(inert_rank_r_same) != inert_rank_same"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_INERT_BY_RANK_SAME + 0] != 0) {
+				fprintf(stderr,
+					"ERROR: inert_rank_0_same != 0"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			if (c[C_RAM_BY_RANK + 0] != c[C_RAM_TRIVIAL]) {
+				fprintf(stderr,
+					"ERROR: ramified_rank_0 != ramified_trivial"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t ram_rank_pos = 0;
+				for (int r = 1; r <= MAX_RANK; r++)
+					ram_rank_pos += c[C_RAM_BY_RANK + r];
+				if (ram_rank_pos != c[C_RAM_NONTRIVIAL]) {
+					fprintf(stderr,
+						"ERROR: sum(ramified_rank_r, r>=1) != ramified_non_trivial"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_RAM_RANK_INC] + c[C_RAM_RANK_SAME] != c[C_RAMIFIED]) {
+				fprintf(stderr,
+					"ERROR: ramified_rank_inc+ramified_rank_same != ramified"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t sum_inc = 0, sum_same = 0;
+				for (int r = 0; r <= MAX_RANK; r++) {
+					if (c[C_RAM_BY_RANK_INC + r] + c[C_RAM_BY_RANK_SAME + r]
+					    != c[C_RAM_BY_RANK + r]) {
+						fprintf(stderr,
+							"ERROR: ramified_rank_%d_inc+ramified_rank_%d_same"
+							" != ramified_rank_%d at boundary=%ld\n",
+							r, r, r, boundary);
+						MPI_Abort(MPI_COMM_WORLD, 1);
+					}
+					sum_inc  += c[C_RAM_BY_RANK_INC  + r];
+					sum_same += c[C_RAM_BY_RANK_SAME + r];
+				}
+				if (sum_inc != c[C_RAM_RANK_INC]) {
+					fprintf(stderr,
+						"ERROR: sum(ramified_rank_r_inc) != ramified_rank_inc"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				if (sum_same != c[C_RAM_RANK_SAME]) {
+					fprintf(stderr,
+						"ERROR: sum(ramified_rank_r_same) != ramified_rank_same"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_RAM_BY_RANK_SAME + 0] != 0) {
+				fprintf(stderr,
+					"ERROR: ramified_rank_0_same != 0"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+
+			printf("%ld,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
+			       ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
 				boundary,
-				c[C_TOTAL], c[C_INERT], c[C_INERT_CYC],
-				c[C_INERT_RANK_INC], c[C_INERT_CYC_RI]);
-			for (int e = 0; e <= max_inert_exp; e++)
-				printf(",%" PRIu64, c[C_INERT_BY_EXP + e]);
+				c[C_TOTAL], c[C_INERT], c[C_RAMIFIED], c[C_SPLIT],
+				c[C_INERT_TRIVIAL], c[C_INERT_NONTRIVIAL],
+				c[C_INERT_RANK_INC], c[C_INERT_RANK_SAME]);
+			for (int r = 0; r <= max_inert_rank; r++)
+				printf(",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
+				       c[C_INERT_BY_RANK + r],
+				       c[C_INERT_BY_RANK_INC + r],
+				       c[C_INERT_BY_RANK_SAME + r]);
 			printf(",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
-				c[C_RAMIFIED], c[C_RAM_CYC],
-				c[C_RAM_RANK_INC], c[C_RAM_CYC_RI]);
-			for (int e = 0; e <= max_ram_exp; e++)
-				printf(",%" PRIu64, c[C_RAM_BY_EXP + e]);
-			printf(",%" PRIu64 "\n",
-				c[C_INERT_CYC_RI] + c[C_RAM_CYC_RI]);
+				c[C_RAM_TRIVIAL], c[C_RAM_NONTRIVIAL],
+				c[C_RAM_RANK_INC], c[C_RAM_RANK_SAME]);
+			for (int r = 0; r <= max_ram_rank; r++)
+				printf(",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
+				       c[C_RAM_BY_RANK + r],
+				       c[C_RAM_BY_RANK_INC + r],
+				       c[C_RAM_BY_RANK_SAME + r]);
+			printf("\n");
 		}
 		fflush(stdout);
 
