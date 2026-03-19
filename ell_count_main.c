@@ -49,7 +49,7 @@
 #define NUM_CLASSES 4
 
 /*
- * Flat counts array layout (12 + 6*(MAX_RANK+1) uint64_t values):
+ * Flat counts array layout:
  *
  *  [0]                      total
  *  [1]                      inert
@@ -63,15 +63,22 @@
  *  [9]                      inert_rank_same    (ell-rank of ell file == fundamental)
  *  [10]                     ram_rank_inc
  *  [11]                     ram_rank_same
- *  [12 .. 12+MAX_RANK]      inert_by_rank[0..MAX_RANK]
- *  [13+MAX_RANK .. 13+2*MAX_RANK+1]  inert_by_rank_inc[0..MAX_RANK]
- *  [14+2*MAX_RANK .. 14+3*MAX_RANK+2]  inert_by_rank_same[0..MAX_RANK]
- *  [15+3*MAX_RANK .. 15+4*MAX_RANK+3]  ram_by_rank[0..MAX_RANK]
- *  [16+4*MAX_RANK .. 16+5*MAX_RANK+4]  ram_by_rank_inc[0..MAX_RANK]
- *  [17+5*MAX_RANK .. 17+6*MAX_RANK+5]  ram_by_rank_same[0..MAX_RANK]
+ *  [12 .. 12+MR]                      inert_by_rank[0..MAX_RANK]
+ *  [12+(MR+1) .. 12+2*(MR+1)-1]       inert_by_rank_inc[0..MAX_RANK]
+ *  [12+2*(MR+1) .. 12+3*(MR+1)-1]     inert_by_rank_same[0..MAX_RANK]
+ *  [12+3*(MR+1) .. 12+4*(MR+1)-1]     ram_by_rank[0..MAX_RANK]
+ *  [12+4*(MR+1) .. 12+5*(MR+1)-1]     ram_by_rank_inc[0..MAX_RANK]
+ *  [12+5*(MR+1) .. 12+6*(MR+1)-1]     ram_by_rank_same[0..MAX_RANK]
+ *  [12+6*(MR+1) .. 12+6*(MR+1)+ME]    inert_cyclic[0..MAX_EXP]
+ *  [12+6*(MR+1)+(ME+1) .. ...]        inert_cyclic_rank_same[0..MAX_EXP]
+ *  [12+6*(MR+1)+2*(ME+1) .. ...]      ram_cyclic[0..MAX_EXP]
+ *  [12+6*(MR+1)+3*(ME+1) .. ...]      ram_cyclic_rank_same[0..MAX_EXP]
+ *
+ *  where MR = MAX_RANK, ME = MAX_EXP
  */
 #define MAX_RANK 20
-#define COUNTS_N (12 + 6 * (MAX_RANK + 1))
+#define MAX_EXP  20
+#define COUNTS_N (12 + 6 * (MAX_RANK + 1) + 4 * (MAX_EXP + 1))
 
 #define C_TOTAL                 0
 #define C_INERT                 1
@@ -91,6 +98,10 @@
 #define C_RAM_BY_RANK           (12 + 3 * (MAX_RANK + 1))  /* [75..95] */
 #define C_RAM_BY_RANK_INC       (12 + 4 * (MAX_RANK + 1))  /* [96..116] */
 #define C_RAM_BY_RANK_SAME      (12 + 5 * (MAX_RANK + 1))  /* [117..137] */
+#define C_INERT_CYCLIC          (12 + 6 * (MAX_RANK + 1))
+#define C_INERT_CYCLIC_RSAME    (12 + 6 * (MAX_RANK + 1) +     (MAX_EXP + 1))
+#define C_RAM_CYCLIC            (12 + 6 * (MAX_RANK + 1) + 2 * (MAX_EXP + 1))
+#define C_RAM_CYCLIC_RSAME      (12 + 6 * (MAX_RANK + 1) + 3 * (MAX_EXP + 1))
 
 /* Response buffer sent from worker to coordinator:
  *   resp[0]       = work_idx (cast to uint64_t)
@@ -177,10 +188,17 @@ static void process_file(
 			continue;
 
 		int fund_ell_rank = 0;
+		uint32_t fund_ell_exp = 0;
 		while ((tok = strtok(NULL, " \t\n")) != NULL) {
 			uint64_t c = strtoull(tok, NULL, 10);
-			if (c > 0 && ell_val(c, (uint64_t)ell) > 0)
-				fund_ell_rank++;
+			if (c > 0) {
+				uint32_t v = ell_val(c, (uint64_t)ell);
+				if (v > 0) {
+					fund_ell_rank++;
+					if (v > fund_ell_exp)
+						fund_ell_exp = v;
+				}
+			}
 		}
 		fund_d += fund_dist * (long)m;
 
@@ -211,8 +229,21 @@ static void process_file(
 			break;
 		}
 
+		if (fund_ell_rank > MAX_RANK)
+			fprintf(stderr,
+				"WARNING: fund_ell_rank=%d > MAX_RANK=%d"
+				" at d=%ld (a=%d m=%d idx=%ld)\n",
+				fund_ell_rank, MAX_RANK, fund_d, a, m, file_idx);
+		if (fund_ell_exp > MAX_EXP)
+			fprintf(stderr,
+				"WARNING: fund_ell_exp=%u > MAX_EXP=%d"
+				" at d=%ld (a=%d m=%d idx=%ld)\n",
+				fund_ell_exp, MAX_EXP, fund_d, a, m, file_idx);
+
 		int trivial = (fund_ell_rank == 0);
 		int r = (fund_ell_rank <= MAX_RANK) ? fund_ell_rank : MAX_RANK;
+		int is_cyclic = (fund_ell_rank <= 1);
+		int cyc_exp = (int)((fund_ell_exp <= MAX_EXP) ? fund_ell_exp : MAX_EXP);
 
 		counts[C_TOTAL]++;
 
@@ -226,7 +257,11 @@ static void process_file(
 			} else {
 				counts[C_INERT_RANK_SAME]++;
 				counts[C_INERT_BY_RANK_SAME + r]++;
+				if (is_cyclic)
+					counts[C_INERT_CYCLIC_RSAME + cyc_exp]++;
 			}
+			if (is_cyclic)
+				counts[C_INERT_CYCLIC + cyc_exp]++;
 			counts[C_INERT_BY_RANK + r]++;
 		} else if (kron == 0) {
 			counts[C_RAMIFIED]++;
@@ -238,7 +273,11 @@ static void process_file(
 			} else {
 				counts[C_RAM_RANK_SAME]++;
 				counts[C_RAM_BY_RANK_SAME + r]++;
+				if (is_cyclic)
+					counts[C_RAM_CYCLIC_RSAME + cyc_exp]++;
 			}
+			if (is_cyclic)
+				counts[C_RAM_CYCLIC + cyc_exp]++;
 			counts[C_RAM_BY_RANK + r]++;
 		} else {
 			/* kron == 1: split */
@@ -357,8 +396,9 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		/* Find max non-zero rank columns to display */
+		/* Find max non-zero rank/exponent columns to display */
 		int max_inert_rank = 0, max_ram_rank = 0;
+		int max_inert_exp = 0, max_ram_exp = 0;
 		for (long fi = 0; fi < files; fi++) {
 			uint64_t *c = &cumul[fi * COUNTS_N];
 			for (int r = MAX_RANK; r > max_inert_rank; r--) {
@@ -373,6 +413,18 @@ int main(int argc, char *argv[])
 					break;
 				}
 			}
+			for (int e = MAX_EXP; e > max_inert_exp; e--) {
+				if (c[C_INERT_CYCLIC + e] > 0) {
+					max_inert_exp = e;
+					break;
+				}
+			}
+			for (int e = MAX_EXP; e > max_ram_exp; e--) {
+				if (c[C_RAM_CYCLIC + e] > 0) {
+					max_ram_exp = e;
+					break;
+				}
+			}
 		}
 
 		/* CSV header */
@@ -382,11 +434,15 @@ int main(int argc, char *argv[])
 		for (int r = 0; r <= max_inert_rank; r++)
 			printf(",inert_rank_%d,inert_rank_%d_inc,inert_rank_%d_same",
 			       r, r, r);
+		for (int e = 0; e <= max_inert_exp; e++)
+			printf(",inert_cyclic_%d,inert_cyclic_%d_rank_same", e, e);
 		printf(",ramified_trivial,ramified_non_trivial"
 		       ",ramified_rank_inc,ramified_rank_same");
 		for (int r = 0; r <= max_ram_rank; r++)
 			printf(",ramified_rank_%d,ramified_rank_%d_inc,ramified_rank_%d_same",
 			       r, r, r);
+		for (int e = 0; e <= max_ram_exp; e++)
+			printf(",ramified_cyclic_%d,ramified_cyclic_%d_rank_same", e, e);
 		printf("\n");
 
 		/* CSV data rows — one row per file index */
@@ -526,6 +582,84 @@ int main(int argc, char *argv[])
 				MPI_Abort(MPI_COMM_WORLD, 1);
 			}
 
+			/* Cyclic validation: inert */
+			if (c[C_INERT_CYCLIC + 0] != c[C_INERT_TRIVIAL]) {
+				fprintf(stderr,
+					"ERROR: inert_cyclic_0 != inert_trivial"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t sum_cyc = 0, sum_cyc_rs = 0;
+				for (int e = 0; e <= MAX_EXP; e++) {
+					sum_cyc    += c[C_INERT_CYCLIC + e];
+					sum_cyc_rs += c[C_INERT_CYCLIC_RSAME + e];
+					if (c[C_INERT_CYCLIC_RSAME + e] > c[C_INERT_CYCLIC + e]) {
+						fprintf(stderr,
+							"ERROR: inert_cyclic_%d_rank_same > inert_cyclic_%d"
+							" at boundary=%ld\n", e, e, boundary);
+						MPI_Abort(MPI_COMM_WORLD, 1);
+					}
+				}
+				if (sum_cyc != c[C_INERT_BY_RANK + 0] + c[C_INERT_BY_RANK + 1]) {
+					fprintf(stderr,
+						"ERROR: sum(inert_cyclic) != inert_rank_0 + inert_rank_1"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				if (sum_cyc_rs != c[C_INERT_BY_RANK_SAME + 1]) {
+					fprintf(stderr,
+						"ERROR: sum(inert_cyclic_rank_same) != inert_rank_1_same"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_INERT_CYCLIC_RSAME + 0] != 0) {
+				fprintf(stderr,
+					"ERROR: inert_cyclic_0_rank_same != 0"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+
+			/* Cyclic validation: ramified */
+			if (c[C_RAM_CYCLIC + 0] != c[C_RAM_TRIVIAL]) {
+				fprintf(stderr,
+					"ERROR: ramified_cyclic_0 != ramified_trivial"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			{
+				uint64_t sum_cyc = 0, sum_cyc_rs = 0;
+				for (int e = 0; e <= MAX_EXP; e++) {
+					sum_cyc    += c[C_RAM_CYCLIC + e];
+					sum_cyc_rs += c[C_RAM_CYCLIC_RSAME + e];
+					if (c[C_RAM_CYCLIC_RSAME + e] > c[C_RAM_CYCLIC + e]) {
+						fprintf(stderr,
+							"ERROR: ramified_cyclic_%d_rank_same > ramified_cyclic_%d"
+							" at boundary=%ld\n", e, e, boundary);
+						MPI_Abort(MPI_COMM_WORLD, 1);
+					}
+				}
+				if (sum_cyc != c[C_RAM_BY_RANK + 0] + c[C_RAM_BY_RANK + 1]) {
+					fprintf(stderr,
+						"ERROR: sum(ramified_cyclic) != ramified_rank_0 + ramified_rank_1"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				if (sum_cyc_rs != c[C_RAM_BY_RANK_SAME + 1]) {
+					fprintf(stderr,
+						"ERROR: sum(ramified_cyclic_rank_same) != ramified_rank_1_same"
+						" at boundary=%ld\n", boundary);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+			if (c[C_RAM_CYCLIC_RSAME + 0] != 0) {
+				fprintf(stderr,
+					"ERROR: ramified_cyclic_0_rank_same != 0"
+					" at boundary=%ld\n", boundary);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+
 			printf("%ld,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
 			       ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
 				boundary,
@@ -537,6 +671,10 @@ int main(int argc, char *argv[])
 				       c[C_INERT_BY_RANK + r],
 				       c[C_INERT_BY_RANK_INC + r],
 				       c[C_INERT_BY_RANK_SAME + r]);
+			for (int e = 0; e <= max_inert_exp; e++)
+				printf(",%" PRIu64 ",%" PRIu64,
+				       c[C_INERT_CYCLIC + e],
+				       c[C_INERT_CYCLIC_RSAME + e]);
 			printf(",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
 				c[C_RAM_TRIVIAL], c[C_RAM_NONTRIVIAL],
 				c[C_RAM_RANK_INC], c[C_RAM_RANK_SAME]);
@@ -545,6 +683,10 @@ int main(int argc, char *argv[])
 				       c[C_RAM_BY_RANK + r],
 				       c[C_RAM_BY_RANK_INC + r],
 				       c[C_RAM_BY_RANK_SAME + r]);
+			for (int e = 0; e <= max_ram_exp; e++)
+				printf(",%" PRIu64 ",%" PRIu64,
+				       c[C_RAM_CYCLIC + e],
+				       c[C_RAM_CYCLIC_RSAME + e]);
 			printf("\n");
 		}
 		fflush(stdout);
